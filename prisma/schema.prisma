@@ -1,0 +1,41 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ProdutoGlobal {
+  id               Int             @id @default(autoincrement())
+  codigo_barras    String          @unique
+  descricao        String          @db.VarChar(255)
+  
+  // Informações Fiscais e de Agrupamento globais
+  ncm              String?         @db.VarChar(10)
+  categoria        String?         @db.VarChar(100)
+  marca            String?         @db.VarChar(100)
+
+  // Metadados para Auditoria e Organização das planilhas
+  origem_dado      String?         @db.VarChar(100) 
+  status_auditoria StatusAuditoria @default(PENDENTE)
+  notas_internas   String?         @db.Text
+
+  created_at       DateTime        @default(now())
+  updated_at       DateTime        @updatedAt
+
+  @@index([categoria])
+  @@index([status_auditoria])
+  @@map("produtos_globais")
+}
+
+enum StatusAuditoria {
+  PENDENTE
+  REVISADO
+  REJEITADO
+}
