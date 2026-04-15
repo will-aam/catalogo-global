@@ -14,8 +14,15 @@ export default async function CatalogoPage({
   const page = parseInt(resolvedParams.page || "1");
   const pageSize = 200;
 
-  // Condição de busca compartilhada para o contador e para a lista
-  const where = categoriaFiltro ? { categoria: categoriaFiltro } : {};
+  // Lógica inteligente para buscar os "Sem Categoria"
+  let where = {};
+  if (categoriaFiltro === "SEM_CATEGORIA") {
+    where = {
+      OR: [{ categoria: null }, { categoria: "" }],
+    };
+  } else if (categoriaFiltro) {
+    where = { categoria: categoriaFiltro };
+  }
 
   // Busca paralela para performance
   const [categoriasResumo, totalItens, produtos] = await Promise.all([
