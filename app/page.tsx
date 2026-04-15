@@ -1,17 +1,35 @@
 import { prisma } from "../lib/prisma";
-import UploadButton from "../components/UploadButton"; // <-- Importação do nosso botão
+import UploadButton from "../components/UploadButton";
+import CategorySidebar from "../components/CategorySidebar";
+import ProductTable from "../components/ProductTable";
 
-export default async function CatalogoPage() {
-  // Busca todos os produtos diretamente do banco de dados (Neon)
+export default async function CatalogoPage({
+  searchParams,
+}: {
+  searchParams: { categoria?: string };
+}) {
+  // 1. Busca um resumo das categorias e a contagem de quantos itens tem em cada uma
+  const categoriasResumo = await prisma.produtoGlobal.groupBy({
+    by: ["categoria"],
+    _count: { id: true },
+    orderBy: { categoria: "asc" },
+  });
+
+  // 2. Busca os produtos (com limite de 200 para não travar o navegador)
+  // e filtra pela categoria caso o usuário tenha clicado na Sidebar
   const produtos = await prisma.produtoGlobal.findMany({
+    where: searchParams.categoria
+      ? { categoria: searchParams.categoria }
+      : undefined,
     orderBy: { created_at: "desc" },
+    take: 200, // Limite vital para a saúde da aba do navegador!
   });
 
   return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-6xl mx-auto">
+    <main className="min-h-screen bg-gray-50 p-4 md:p-8">
+      <div className="max-w-350 mx-auto">
         {/* Cabeçalho */}
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
               Catálogo Global
@@ -21,79 +39,29 @@ export default async function CatalogoPage() {
             </p>
           </div>
 
-          {/* Container alinhando o botão de upload e o contador lado a lado */}
-          <div className="flex items-center gap-4">
-            <UploadButton /> {/* <-- Nosso botão renderizado aqui */}
+          <div className="flex flex-wrap items-center gap-4">
+            <UploadButton />
             <div className="bg-white px-4 py-2 rounded-lg border shadow-sm">
               <span className="text-sm font-medium text-gray-600">
-                Total de itens:{" "}
+                Visualizando:{" "}
               </span>
               <span className="text-lg font-bold text-blue-600">
-                {produtos.length}
+                {produtos.length}{" "}
+                {searchParams.categoria ? "nesta categoria" : "recentes"}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Tabela de Dados */}
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-gray-100 border-b text-gray-600">
-                <tr>
-                  <th className="p-4 font-semibold">Cód. Barras</th>
-                  <th className="p-4 font-semibold">Descrição</th>
-                  <th className="p-4 font-semibold">NCM</th>
-                  <th className="p-4 font-semibold">Categoria</th>
-                  <th className="p-4 font-semibold">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {produtos.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="p-8 text-center text-gray-500">
-                      Nenhum produto cadastrado ainda.
-                    </td>
-                  </tr>
-                ) : (
-                  produtos.map((produto) => (
-                    <tr
-                      key={produto.id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="p-4 font-mono text-gray-600">
-                        {produto.codigo_barras}
-                      </td>
-                      <td className="p-4 font-medium text-gray-900">
-                        {produto.descricao}
-                      </td>
-                      <td className="p-4 text-gray-500">
-                        {produto.ncm || "-"}
-                      </td>
-                      <td className="p-4">
-                        <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-md text-xs font-medium border">
-                          {produto.categoria || "Sem Categoria"}
-                        </span>
-                      </td>
-                      <td className="p-4">
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                            produto.status_auditoria === "PENDENTE"
-                              ? "bg-yellow-100 text-yellow-700"
-                              : produto.status_auditoria === "REVISADO"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-red-100 text-red-700"
-                          }`}
-                        >
-                          {produto.status_auditoria}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+        {/* Layout Principal (Sidebar Lateral + Tabela) */}
+        <div className="flex flex-col md:flex-row gap-6 items-start">
+          {/* A Sidebar fica na esquerda */}
+          <div className="w-full md:w-auto shrink-0">
+            <CategorySidebar categorias={categoriasResumo} />
           </div>
+
+          {/* A Tabela ocupa o resto do espaço */}
+          <ProductTable produtos={produtos} />
         </div>
       </div>
     </main>
