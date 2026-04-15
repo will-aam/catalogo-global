@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import UploadButton from "../components/UploadButton"; // <-- Importação do nosso botão
 
 export default async function CatalogoPage() {
   // Busca todos os produtos diretamente do banco de dados (Neon)
@@ -19,13 +20,18 @@ export default async function CatalogoPage() {
               Gestão e auditoria de base de dados mestra
             </p>
           </div>
-          <div className="bg-white px-4 py-2 rounded-lg border shadow-sm">
-            <span className="text-sm font-medium text-gray-600">
-              Total de itens:{" "}
-            </span>
-            <span className="text-lg font-bold text-blue-600">
-              {produtos.length}
-            </span>
+
+          {/* Container alinhando o botão de upload e o contador lado a lado */}
+          <div className="flex items-center gap-4">
+            <UploadButton /> {/* <-- Nosso botão renderizado aqui */}
+            <div className="bg-white px-4 py-2 rounded-lg border shadow-sm">
+              <span className="text-sm font-medium text-gray-600">
+                Total de itens:{" "}
+              </span>
+              <span className="text-lg font-bold text-blue-600">
+                {produtos.length}
+              </span>
+            </div>
           </div>
         </div>
 
