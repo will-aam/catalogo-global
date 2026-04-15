@@ -3,10 +3,14 @@ import { prisma } from "@/lib/prisma";
 
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } },
+  // 1. A tipagem agora exige que params seja uma Promise
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const id = parseInt(params.id);
+    // 2. Precisamos aguardar (await) os parâmetros antes de usar
+    const resolvedParams = await params;
+    const id = parseInt(resolvedParams.id);
+
     const body = await request.json();
 
     const produtoAtualizado = await prisma.produtoGlobal.update({
@@ -22,7 +26,6 @@ export async function PUT(
 
     return NextResponse.json(produtoAtualizado);
   } catch (error) {
-    console.error("Erro na API PUT /products/[id]:", error); // <-- Adicionamos isso!
     return NextResponse.json(
       { error: "Erro ao atualizar produto" },
       { status: 500 },
