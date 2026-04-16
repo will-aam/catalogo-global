@@ -3,11 +3,9 @@ import { prisma } from "@/lib/prisma";
 
 export async function PUT(
   request: Request,
-  // 1. A tipagem agora exige que params seja uma Promise
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    // 2. Precisamos aguardar (await) os parâmetros antes de usar
     const resolvedParams = await params;
     const id = parseInt(resolvedParams.id);
 
@@ -20,6 +18,7 @@ export async function PUT(
         codigo_barras: body.codigo_barras,
         ncm: body.ncm,
         categoria: body.categoria,
+        marca: body.marca, // <-- COLUNA NOVA ADICIONADA AQUI!
         status_auditoria: body.status_auditoria,
       },
     });
@@ -28,6 +27,27 @@ export async function PUT(
   } catch (error) {
     return NextResponse.json(
       { error: "Erro ao atualizar produto" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const resolvedParams = await params;
+    const id = parseInt(resolvedParams.id);
+
+    await prisma.produtoGlobal.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Erro ao excluir produto" },
       { status: 500 },
     );
   }

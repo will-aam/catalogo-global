@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { ProdutoGlobal } from "@prisma/client"; // Tipo oficial do Prisma
+import { ProdutoGlobal } from "@prisma/client";
+import { useRouter } from "next/navigation";
 
 export default function ProductRow({ produto }: { produto: ProdutoGlobal }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState(produto);
   const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -16,30 +18,53 @@ export default function ProductRow({ produto }: { produto: ProdutoGlobal }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...editData,
-          status_auditoria: "REVISADO", // Ao salvar, já marca como revisado
+          status_auditoria: "REVISADO",
         }),
       });
 
       if (res.ok) {
         setIsEditing(false);
-        // O ideal aqui seria um toast de sucesso
+        router.refresh();
       }
-      // ... código anterior
     } catch (error) {
-      console.error("Erro no formulário ao salvar:", error); // <-- Adicionamos isso!
       alert("Erro ao salvar");
     } finally {
       setIsLoading(false);
     }
   };
-  // ... resto do código
+
+  const handleDelete = async () => {
+    // Caixinha de diálogo nativa do navegador
+    const confirmado = window.confirm(
+      "Deseja realmente confirmar a exclusão do item?",
+    );
+
+    if (confirmado) {
+      setIsLoading(true);
+      try {
+        const res = await fetch(`/api/products/${produto.id}`, {
+          method: "DELETE",
+        });
+
+        if (res.ok) {
+          router.refresh(); // Atualiza a tela para sumir com o item
+        } else {
+          alert("Erro ao excluir o item.");
+        }
+      } catch (error) {
+        alert("Erro na conexão ao excluir.");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
 
   if (isEditing) {
     return (
       <tr className="bg-blue-50/50 transition-colors">
         <td className="p-2">
           <input
-            className="w-full p-1 border rounded text-xs font-mono"
+            className="w-full p-1 border rounded text-xs font-mono outline-none focus:border-blue-400"
             value={editData.codigo_barras}
             onChange={(e) =>
               setEditData({ ...editData, codigo_barras: e.target.value })
@@ -48,46 +73,54 @@ export default function ProductRow({ produto }: { produto: ProdutoGlobal }) {
         </td>
         <td className="p-2">
           <input
-            className="w-full p-1 border rounded text-xs font-medium"
+            className="w-full p-1 border rounded text-xs font-medium outline-none focus:border-blue-400"
             value={editData.descricao}
             onChange={(e) =>
-              setEditData({
-                ...editData,
-                descricao: e.target.value.toUpperCase(),
-              })
+              setEditData({ ...editData, descricao: e.target.value })
             }
           />
         </td>
         <td className="p-2">
           <input
-            className="w-full p-1 border rounded text-xs"
+            className="w-full p-1 border rounded text-xs outline-none focus:border-blue-400"
             value={editData.ncm || ""}
             onChange={(e) => setEditData({ ...editData, ncm: e.target.value })}
           />
         </td>
         <td className="p-2">
           <input
-            className="w-full p-1 border rounded text-xs"
+            className="w-full p-1 border rounded text-xs outline-none focus:border-blue-400"
+            value={editData.marca || ""}
+            onChange={(e) =>
+              setEditData({ ...editData, marca: e.target.value })
+            }
+          />
+        </td>
+        <td className="p-2">
+          <input
+            className="w-full p-1 border rounded text-xs outline-none focus:border-blue-400"
             value={editData.categoria || ""}
             onChange={(e) =>
               setEditData({ ...editData, categoria: e.target.value })
             }
           />
         </td>
-        <td className="p-2 text-center">
-          <button
-            onClick={handleSave}
-            disabled={isLoading}
-            className="text-green-600 font-bold text-xs hover:underline mr-2"
-          >
-            {isLoading ? "..." : "SALVAR"}
-          </button>
-          <button
-            onClick={() => setIsEditing(false)}
-            className="text-gray-400 text-xs hover:underline"
-          >
-            CANCELAR
-          </button>
+        <td className="p-2 text-center" colSpan={2}>
+          <div className="flex justify-center gap-2">
+            <button
+              onClick={handleSave}
+              disabled={isLoading}
+              className="bg-green-100 text-green-700 px-2 py-1 rounded font-bold text-xs hover:bg-green-200 transition-colors"
+            >
+              {isLoading ? "..." : "✓ SALVAR"}
+            </button>
+            <button
+              onClick={() => setIsEditing(false)}
+              className="bg-gray-100 text-gray-600 px-2 py-1 rounded font-bold text-xs hover:bg-gray-200 transition-colors"
+            >
+              ✕ CANCELAR
+            </button>
+          </div>
         </td>
       </tr>
     );
@@ -95,16 +128,17 @@ export default function ProductRow({ produto }: { produto: ProdutoGlobal }) {
 
   return (
     <tr className="hover:bg-gray-50 transition-colors border-b">
-      <td className="p-4 font-mono text-gray-600 truncate">
+      <td className="p-4 font-mono text-gray-900 font-medium">
         {editData.codigo_barras}
       </td>
       <td
-        className="p-4 font-medium text-gray-900 truncate"
+        className="p-4 font-medium text-gray-700 truncate"
         title={editData.descricao}
       >
         {editData.descricao}
       </td>
       <td className="p-4 text-gray-500 truncate">{editData.ncm || "-"}</td>
+      <td className="p-4 text-gray-600 truncate">{editData.marca || "-"}</td>
       <td className="p-4 truncate">
         <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-md text-xs font-medium border">
           {editData.categoria || "Sem Categoria"}
@@ -123,13 +157,24 @@ export default function ProductRow({ produto }: { produto: ProdutoGlobal }) {
           {editData.status_auditoria}
         </span>
       </td>
-      <td className="p-4 text-center">
-        <button
-          onClick={() => setIsEditing(true)}
-          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-        >
-          Editar
-        </button>
+      <td className="p-4">
+        <div className="flex justify-center gap-4">
+          <button
+            onClick={() => setIsEditing(true)}
+            className="text-lg hover:scale-110 transition-transform grayscale hover:grayscale-0"
+            title="Editar Produto"
+          >
+            ✏️
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={isLoading}
+            className="text-lg hover:scale-110 transition-transform grayscale hover:grayscale-0"
+            title="Excluir Produto"
+          >
+            🗑️
+          </button>
+        </div>
       </td>
     </tr>
   );
