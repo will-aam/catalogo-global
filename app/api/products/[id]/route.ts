@@ -8,23 +8,24 @@ export async function PUT(
   try {
     const resolvedParams = await params;
     const id = parseInt(resolvedParams.id);
-
     const body = await request.json();
 
     const produtoAtualizado = await prisma.produtoGlobal.update({
       where: { id },
       data: {
-        descricao: body.descricao,
         codigo_barras: body.codigo_barras,
-        ncm: body.ncm,
-        categoria: body.categoria,
-        marca: body.marca, // <-- COLUNA NOVA ADICIONADA AQUI!
+        descricao: body.descricao,
+        // O segredo: Se o texto for apenas espaços vazios, transforma em null
+        ncm: body.ncm?.trim() === "" ? null : body.ncm,
+        marca: body.marca?.trim() === "" ? null : body.marca,
+        categoria: body.categoria?.trim() === "" ? null : body.categoria,
         status_auditoria: body.status_auditoria,
       },
     });
 
     return NextResponse.json(produtoAtualizado);
   } catch (error) {
+    console.error("Erro no PUT:", error);
     return NextResponse.json(
       { error: "Erro ao atualizar produto" },
       { status: 500 },
@@ -46,6 +47,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    console.error("Erro no DELETE:", error);
     return NextResponse.json(
       { error: "Erro ao excluir produto" },
       { status: 500 },

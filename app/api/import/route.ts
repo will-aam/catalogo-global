@@ -28,9 +28,17 @@ export async function POST(request: Request) {
     const mapaExistentes = new Map(
       produtosExistentes.map((p) => [p.codigo_barras, p.id]),
     );
+    type ProdutoImportacao = {
+      codigo_barras: string;
+      descricao: string;
+      ncm: string | null;
+      marca: string | null;
+      categoria: string | null;
+      status_auditoria: "PENDENTE";
+    };
 
-    const novos: any[] = [];
-    const paraAtualizar: any[] = [];
+    const novos: ProdutoImportacao[] = [];
+    const paraAtualizar: { id: number; data: ProdutoImportacao }[] = [];
 
     // 3. Separa quem é novo e quem é atualização
     for (const linha of linhas) {
@@ -46,8 +54,10 @@ export async function POST(request: Request) {
         status_auditoria: "PENDENTE" as const,
       };
 
-      if (mapaExistentes.has(ean)) {
-        paraAtualizar.push({ id: mapaExistentes.get(ean), data: dados });
+      const existingId = mapaExistentes.get(ean);
+
+      if (existingId !== undefined) {
+        paraAtualizar.push({ id: existingId, data: dados });
       } else {
         novos.push(dados);
       }
