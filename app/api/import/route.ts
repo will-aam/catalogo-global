@@ -6,57 +6,76 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File;
-
-    if (!file) {
+    if (!file)
       return NextResponse.json(
-        { error: "Nenhum arquivo enviado." },
+        { error: "Arquivo não encontrado" },
         { status: 400 },
       );
+
+    const text = await file.text();
+    const { data } = Papa.parse(text, { header: false, skipEmptyLines: true });
+    const linhas = data.slice(1) as string[][]; // Remove o cabeçalho
+
+    // 1. Extrai todos os códigos de barras da planilha para uma busca única
+    const codigosPlanilha = linhas.map((l) => l[0]?.trim()).filter(Boolean);
+
+    // 2. Busca o que já existe no banco
+    const produtosExistentes = await prisma.produtoGlobal.findMany({
+      where: { codigo_barras: { in: codigosPlanilha } },
+      select: { codigo_barras: true, id: true },
+    });
+
+    const mapaExistentes = new Map(
+      produtosExistentes.map((p) => [p.codigo_barras, p.id]),
+    );
+
+    const novos: any[] = [];
+    const paraAtualizar: any[] = [];
+
+    // 3. Separa quem é novo e quem é atualização
+    for (const linha of linhas) {
+      const ean = linha[0]?.trim();
+      if (!ean) continue;
+
+      const dados = {
+        codigo_barras: ean,
+        descricao: linha[1]?.trim() || "SEM DESCRIÇÃO",
+        ncm: linha[2]?.trim() || null,
+        categoria: linha[3]?.trim() || null,
+        marca: linha[4]?.trim() || null,
+        status_auditoria: "PENDENTE" as const,
+      };
+
+      if (mapaExistentes.has(ean)) {
+        paraAtualizar.push({ id: mapaExistentes.get(ean), data: dados });
+      } else {
+        novos.push(dados);
+      }
     }
 
-    // Lê o conteúdo do arquivo CSV como texto
-    const text = await file.text();
+    // 4. Executa as operações em bloco (Transaction)
+    await prisma.$transaction([
+      // Insere os novos de uma vez (Rápido)
+      prisma.produtoGlobal.createMany({ data: novos, skipDuplicates: true }),
 
-    // Faz o parse (leitura) ignorando o nome dos cabeçalhos (header: false)
-    // Isso transforma cada linha num array simples: [codigo, descricao, grupo, marca, ncm]
-    const { data } = Papa.parse(text, {
-      header: false,
-      skipEmptyLines: true, // Ignora linhas em branco no final do arquivo
-    });
-
-    // Removemos a primeira linha (índice 0) assumindo que é o cabeçalho ("Código", "Descrição", etc.)
-    const linhas = data.slice(1) as string[][];
-
-    // Mapeamento organizado
-    const produtosParaInserir = linhas
-      .map((linha) => {
-        return {
-          codigo_barras: linha[0]?.trim(),
-          descricao: linha[1]?.trim() || "SEM DESCRIÇÃO",
-          categoria: linha[2]?.trim() || null, // Se vier vazio, vira null
-          marca: linha[3]?.trim() || null, // Se vier vazio, vira null
-          ncm: linha[4]?.trim() || null,
-          origem_dado: file.name, // Salva o nome do arquivo (ex: "planilha.csv") para auditoria
-          status_auditoria: "PENDENTE" as const,
-        };
-      })
-      .filter((p) => p.codigo_barras); // Filtro de segurança: só insere se tiver código de barras
-
-    // Inserção em Massa (Batch Insert)
-    const resultado = await prisma.produtoGlobal.createMany({
-      data: produtosParaInserir,
-      skipDuplicates: true, // MAGIA AQUI: Se o código já existir, ele ignora e não quebra o sistema
-    });
+      // Atualiza os existentes (Um por um, mas dentro da transação)
+      ...paraAtualizar.map((p) =>
+        prisma.produtoGlobal.update({
+          where: { id: p.id },
+          data: p.data,
+        }),
+      ),
+    ]);
 
     return NextResponse.json({
       sucesso: true,
-      inseridos: resultado.count,
-      total_lido: produtosParaInserir.length,
+      criados: novos.length,
+      atualizados: paraAtualizar.length,
     });
   } catch (error) {
-    console.error("Erro na importação:", error);
+    console.error(error);
     return NextResponse.json(
-      { error: "Erro interno ao processar o arquivo." },
+      { error: "Erro ao processar importação" },
       { status: 500 },
     );
   }
