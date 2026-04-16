@@ -1,5 +1,5 @@
 import { prisma } from "../lib/prisma";
-import { Prisma } from "@prisma/client"; // <-- Importação dos tipos oficiais
+import { Prisma } from "@prisma/client";
 import UploadButton from "../components/UploadButton";
 import CategorySidebar from "../components/CategorySidebar";
 import ProductTable from "../components/ProductTable";
@@ -18,17 +18,14 @@ export default async function CatalogoPage({
   const page = parseInt(resolvedParams.page || "1");
   const pageSize = 200;
 
-  // 1. Tipamos a array de condições com os tipos oficiais do Prisma
   const conditions: Prisma.ProdutoGlobalWhereInput[] = [];
 
-  // Filtro da Sidebar
   if (categoriaFiltro === "SEM_CATEGORIA") {
     conditions.push({ OR: [{ categoria: null }, { categoria: "" }] });
   } else if (categoriaFiltro) {
     conditions.push({ categoria: categoriaFiltro });
   }
 
-  // Filtro da Barra de Pesquisa (EAN ou Descrição)
   if (termoBusca) {
     conditions.push({
       OR: [
@@ -38,7 +35,6 @@ export default async function CatalogoPage({
     });
   }
 
-  // 2. Usamos 'const' e aplicamos as condições de forma limpa e sem 'any'
   const where: Prisma.ProdutoGlobalWhereInput =
     conditions.length > 0 ? { AND: conditions } : {};
 
@@ -100,7 +96,13 @@ export default async function CatalogoPage({
           </div>
 
           <div className="flex-1 flex flex-col bg-white rounded-xl shadow-sm border overflow-hidden">
-            <ProductTable produtos={produtos} />
+            {/* AQUI ESTÁ A MÁGICA: Passando as props novas para a tabela */}
+            <ProductTable
+              produtos={produtos}
+              totalItemsEncontrados={totalItens}
+              categoriaFiltro={categoriaFiltro}
+              termoBusca={termoBusca}
+            />
             <PaginationControls currentPage={page} totalPages={totalPages} />
           </div>
         </div>

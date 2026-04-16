@@ -5,25 +5,42 @@ import { ProdutoGlobal } from "@prisma/client";
 import ProductRow from "./ProductRow";
 import { useRouter } from "next/navigation";
 
+// Criamos o molde exato para o ESLint e TypeScript ficarem felizes
+type BulkPayload = {
+  categoria: string;
+  ids?: number[];
+  selectAllFilters?: {
+    categoriaFiltro: string | null;
+    termoBusca: string | null;
+  };
+};
+
 export default function ProductTable({
   produtos,
+  totalItemsEncontrados,
+  categoriaFiltro,
+  termoBusca,
 }: {
   produtos: ProdutoGlobal[];
+  totalItemsEncontrados: number;
+  categoriaFiltro?: string;
+  termoBusca?: string;
 }) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
   const [isSavingBulk, setIsSavingBulk] = useState(false);
+  const [selectAllPages, setSelectAllPages] = useState(false);
   const router = useRouter();
 
-  // Verifica se todos da página atual estão selecionados
-  const allSelected =
+  const allOnPageSelected =
     produtos.length > 0 && selectedIds.size === produtos.length;
 
   const toggleAll = () => {
-    if (allSelected) {
-      setSelectedIds(new Set()); // Desmarca todos
+    if (allOnPageSelected) {
+      setSelectedIds(new Set());
+      setSelectAllPages(false);
     } else {
-      setSelectedIds(new Set(produtos.map((p) => p.id))); // Marca todos da página
+      setSelectedIds(new Set(produtos.map((p) => p.id)));
     }
   };
 
@@ -32,27 +49,40 @@ export default function ProductTable({
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setSelectedIds(next);
+    setSelectAllPages(false);
   };
 
   const handleBulkCategorize = async () => {
     if (!bulkCategory) return alert("Digite a nova categoria!");
     setIsSavingBulk(true);
     try {
+      // Usamos o nosso molde "BulkPayload" em vez do "any" proibido
+      const payload: BulkPayload = { categoria: bulkCategory };
+
+      if (selectAllPages) {
+        payload.selectAllFilters = {
+          categoriaFiltro: categoriaFiltro || null,
+          termoBusca: termoBusca || null,
+        };
+      } else {
+        payload.ids = Array.from(selectedIds);
+      }
+
       const res = await fetch("/api/products/bulk-categorize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ids: Array.from(selectedIds),
-          categoria: bulkCategory,
-        }),
+        body: JSON.stringify(payload),
       });
+
       if (res.ok) {
-        setSelectedIds(new Set()); // Limpa seleção
-        setBulkCategory(""); // Limpa o input
-        router.refresh(); // Recarrega os dados
+        setSelectedIds(new Set());
+        setSelectAllPages(false);
+        setBulkCategory("");
+        router.refresh();
+      } else {
+        alert("Erro ao categorizar. Verifique a conexão.");
       }
     } catch {
-      // <-- ESLint corrigido (removido o 'e')
       alert("Erro ao categorizar itens");
     } finally {
       setIsSavingBulk(false);
@@ -60,28 +90,64 @@ export default function ProductTable({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border overflow-hidden flex-1 relative">
-      {/* BARRA DE AÇÃO EM LOTE (Só aparece se tiver algo selecionado) */}
+    <div className="bg-white rounded-xl shadow-sm border overflow-hidden flex-1 relative flex flex-col">
       {selectedIds.size > 0 && (
-        <div className="bg-blue-600 text-white p-3 flex items-center justify-between sticky top-0 z-10 shadow-md animate-in slide-in-from-top-2">
-          <span className="font-semibold text-sm">
-            {selectedIds.size}{" "}
-            {selectedIds.size === 1 ? "item selecionado" : "itens selecionados"}
-          </span>
+        <div className="bg-blue-600 text-white p-3 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-10 shadow-md animate-in slide-in-from-top-2 gap-3">
+          <div className="flex flex-col">
+            <span className="font-semibold text-sm">
+              {selectAllPages ? (
+                <>
+                  Todos os{" "}
+                  <span className="font-bold underline">
+                    {totalItemsEncontrados}
+                  </span>{" "}
+                  itens correspondentes selecionados.
+                </>
+              ) : (
+                <>
+                  {selectedIds.size}{" "}
+                  {selectedIds.size === 1
+                    ? "item selecionado"
+                    : "itens selecionados"}
+                </>
+              )}
+            </span>
+
+            {allOnPageSelected &&
+              !selectAllPages &&
+              totalItemsEncontrados > produtos.length && (
+                <button
+                  onClick={() => setSelectAllPages(true)}
+                  className="text-xs text-blue-200 hover:text-white text-left underline mt-1 font-medium transition-colors"
+                >
+                  Selecionar todos os {totalItemsEncontrados} itens
+                  correspondentes à sua pesquisa?
+                </button>
+              )}
+            {selectAllPages && (
+              <button
+                onClick={() => setSelectAllPages(false)}
+                className="text-xs text-blue-200 hover:text-white text-left underline mt-1 transition-colors"
+              >
+                Desfazer seleção total
+              </button>
+            )}
+          </div>
+
           <div className="flex gap-2">
             <input
               type="text"
               placeholder="Digite a categoria (ex: Calçados)"
               value={bulkCategory}
               onChange={(e) => setBulkCategory(e.target.value)}
-              className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-64"
+              className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-48 sm:w-64"
             />
             <button
               onClick={handleBulkCategorize}
               disabled={isSavingBulk}
               className="bg-green-500 hover:bg-green-400 text-white px-4 py-1.5 rounded-md text-sm font-bold transition-colors disabled:opacity-50"
             >
-              {isSavingBulk ? "Aplicando..." : "Aplicar"}
+              {isSavingBulk ? "..." : "Aplicar"}
             </button>
           </div>
         </div>
@@ -89,16 +155,13 @@ export default function ProductTable({
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm table-fixed min-w-250">
-          {" "}
-          {/* <-- Tailwind corrigido para min-w-250 */}
           <thead className="bg-gray-100 border-b text-gray-600">
             <tr>
-              {/* CHECKBOX DO CABEÇALHO */}
               <th className="p-4 w-16 text-center">
                 <input
                   type="checkbox"
                   className="w-4 h-4 cursor-pointer accent-blue-600"
-                  checked={allSelected}
+                  checked={allOnPageSelected}
                   onChange={toggleAll}
                   title="Selecionar todos da página"
                 />
@@ -124,7 +187,7 @@ export default function ProductTable({
                 <ProductRow
                   key={produto.id}
                   produto={produto}
-                  isSelected={selectedIds.has(produto.id)}
+                  isSelected={selectAllPages || selectedIds.has(produto.id)}
                   onToggle={toggleOne}
                 />
               ))
