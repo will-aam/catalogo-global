@@ -73,16 +73,20 @@ export default function ProductRow({
     return (
       <tr className="bg-blue-50/50 transition-colors">
         <td className="p-4 text-center">
+          {/* CORREÇÃO AQUI: Avisamos o React que ele continua controlado, mesmo desabilitado */}
           <input
             type="checkbox"
+            checked={isSelected}
+            readOnly
             disabled
-            className="w-4 h-4 cursor-not-allowed opacity-50"
+            className="w-4 h-4 cursor-not-allowed opacity-50 accent-blue-600"
           />
         </td>
         <td className="p-2">
+          {/* CORREÇÃO AQUI: Adicionado || "" como trava de segurança em todos */}
           <input
             className="w-full p-1 border rounded text-xs font-mono outline-none focus:border-blue-400"
-            value={editData.codigo_barras}
+            value={editData.codigo_barras || ""}
             onChange={(e) =>
               setEditData({ ...editData, codigo_barras: e.target.value })
             }
@@ -91,7 +95,7 @@ export default function ProductRow({
         <td className="p-2">
           <input
             className="w-full p-1 border rounded text-xs font-medium outline-none focus:border-blue-400"
-            value={editData.descricao}
+            value={editData.descricao || ""}
             onChange={(e) =>
               setEditData({ ...editData, descricao: e.target.value })
             }
