@@ -8,6 +8,7 @@ export default function ProductRow({ produto }: { produto: ProdutoGlobal }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState(produto);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDeleted, setIsDeleted] = useState(false); // <-- NOVO ESTADO AQUI
   const router = useRouter();
 
   const handleSave = async () => {
@@ -24,6 +25,8 @@ export default function ProductRow({ produto }: { produto: ProdutoGlobal }) {
 
       if (res.ok) {
         setIsEditing(false);
+        // Obs: No salvar, o router.refresh() é menos agressivo,
+        // mas se quiser evitar, basta remover. Vamos manter por enquanto para atualizar o status.
         router.refresh();
       }
     } catch (error) {
@@ -34,7 +37,6 @@ export default function ProductRow({ produto }: { produto: ProdutoGlobal }) {
   };
 
   const handleDelete = async () => {
-    // Caixinha de diálogo nativa do navegador
     const confirmado = window.confirm(
       "Deseja realmente confirmar a exclusão do item?",
     );
@@ -47,17 +49,21 @@ export default function ProductRow({ produto }: { produto: ProdutoGlobal }) {
         });
 
         if (res.ok) {
-          router.refresh(); // Atualiza a tela para sumir com o item
+          setIsDeleted(true); // <-- A MÁGICA: Oculta a linha instantaneamente!
+          // Removemos o router.refresh() daqui!
         } else {
           alert("Erro ao excluir o item.");
+          setIsLoading(false); // Só volta ao normal se der erro
         }
       } catch (error) {
         alert("Erro na conexão ao excluir.");
-      } finally {
         setIsLoading(false);
       }
     }
   };
+
+  // Se o item foi deletado, a gente retorna 'null' e a linha some da tabela na hora!
+  if (isDeleted) return null;
 
   if (isEditing) {
     return (
