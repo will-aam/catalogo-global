@@ -4,11 +4,19 @@ import { useState } from "react";
 import { ProdutoGlobal } from "@prisma/client";
 import { useRouter } from "next/navigation";
 
-export default function ProductRow({ produto }: { produto: ProdutoGlobal }) {
+export default function ProductRow({
+  produto,
+  isSelected,
+  onToggle,
+}: {
+  produto: ProdutoGlobal;
+  isSelected: boolean;
+  onToggle: (id: number) => void;
+}) {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState(produto);
   const [isLoading, setIsLoading] = useState(false);
-  const [isDeleted, setIsDeleted] = useState(false); // <-- NOVO ESTADO AQUI
+  const [isDeleted, setIsDeleted] = useState(false);
   const router = useRouter();
 
   const handleSave = async () => {
@@ -25,11 +33,9 @@ export default function ProductRow({ produto }: { produto: ProdutoGlobal }) {
 
       if (res.ok) {
         setIsEditing(false);
-        // Obs: No salvar, o router.refresh() é menos agressivo,
-        // mas se quiser evitar, basta remover. Vamos manter por enquanto para atualizar o status.
         router.refresh();
       }
-    } catch (error) {
+    } catch {
       alert("Erro ao salvar");
     } finally {
       setIsLoading(false);
@@ -49,25 +55,30 @@ export default function ProductRow({ produto }: { produto: ProdutoGlobal }) {
         });
 
         if (res.ok) {
-          setIsDeleted(true); // <-- A MÁGICA: Oculta a linha instantaneamente!
-          // Removemos o router.refresh() daqui!
+          setIsDeleted(true);
         } else {
           alert("Erro ao excluir o item.");
-          setIsLoading(false); // Só volta ao normal se der erro
+          setIsLoading(false);
         }
-      } catch (error) {
+      } catch {
         alert("Erro na conexão ao excluir.");
         setIsLoading(false);
       }
     }
   };
 
-  // Se o item foi deletado, a gente retorna 'null' e a linha some da tabela na hora!
   if (isDeleted) return null;
 
   if (isEditing) {
     return (
       <tr className="bg-blue-50/50 transition-colors">
+        <td className="p-4 text-center">
+          <input
+            type="checkbox"
+            disabled
+            className="w-4 h-4 cursor-not-allowed opacity-50"
+          />
+        </td>
         <td className="p-2">
           <input
             className="w-full p-1 border rounded text-xs font-mono outline-none focus:border-blue-400"
@@ -133,7 +144,17 @@ export default function ProductRow({ produto }: { produto: ProdutoGlobal }) {
   }
 
   return (
-    <tr className="hover:bg-gray-50 transition-colors border-b">
+    <tr
+      className={`hover:bg-gray-50 transition-colors border-b ${isSelected ? "bg-blue-50/30" : ""}`}
+    >
+      <td className="p-4 text-center">
+        <input
+          type="checkbox"
+          className="w-4 h-4 cursor-pointer accent-blue-600"
+          checked={isSelected}
+          onChange={() => onToggle(produto.id)}
+        />
+      </td>
       <td className="p-4 font-mono text-gray-900 font-medium">
         {editData.codigo_barras}
       </td>
