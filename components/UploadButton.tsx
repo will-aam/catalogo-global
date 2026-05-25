@@ -3,6 +3,16 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
+const TEMPLATE_FILE_NAME = "modelo-importacao.csv";
+const TEMPLATE_COLUMNS = ["codigo_barras", "descricao", "ncm", "categoria", "marca"];
+const TEMPLATE_SAMPLE_ROW = [
+  "7891234567890",
+  "Produto Exemplo",
+  "22030000",
+  "BEBIDAS",
+  "MARCA EXEMPLO",
+];
+
 export default function UploadButton() {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -42,8 +52,24 @@ export default function UploadButton() {
     }
   };
 
+  const handleDownloadTemplate = () => {
+    const csvContent = `${TEMPLATE_COLUMNS.join(",")}\n${TEMPLATE_SAMPLE_ROW.join(",")}`;
+    const blob = new Blob([`\uFEFF${csvContent}`], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = TEMPLATE_FILE_NAME;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <div>
+    <div className="flex flex-wrap items-center gap-2">
       <input
         type="file"
         accept=".csv"
@@ -58,6 +84,13 @@ export default function UploadButton() {
           ${isUploading ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
       >
         {isUploading ? "Importando..." : "Importar CSV"}
+      </button>
+      <button
+        type="button"
+        onClick={handleDownloadTemplate}
+        className="px-4 py-2 rounded-lg font-medium text-blue-700 bg-white border border-blue-200 hover:bg-blue-50 transition-colors shadow-sm"
+      >
+        Baixar modelo CSV
       </button>
     </div>
   );
