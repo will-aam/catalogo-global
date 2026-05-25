@@ -20,6 +20,15 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Importação de CSV
+
+Na tela principal há os botões **Importar CSV** e **Baixar modelo CSV**.
+
+- Use **Baixar modelo CSV** para obter o arquivo `modelo-importacao.csv`.
+- Preencha o modelo mantendo o cabeçalho e a ordem das colunas:
+  `codigo_barras,descricao,ncm,categoria,marca`.
+- Em seguida, envie o arquivo preenchido pelo botão **Importar CSV**.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
