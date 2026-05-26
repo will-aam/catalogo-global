@@ -6,18 +6,22 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File;
-    if (!file)
+
+    if (!file) {
       return NextResponse.json(
         { error: "Arquivo não encontrado" },
         { status: 400 },
       );
+    }
 
     const text = await file.text();
     const { data } = Papa.parse(text, { header: false, skipEmptyLines: true });
     const linhas = data.slice(1) as string[][]; // Remove o cabeçalho
 
     // 1. Extrai todos os códigos de barras da planilha para uma busca única
-    const codigosPlanilha = linhas.map((l) => l[0]?.trim()).filter(Boolean);
+    const codigosPlanilha = linhas
+      .map((l) => l[0]?.trim())
+      .filter((c): c is string => Boolean(c));
 
     // 2. Busca o que já existe no banco
     const produtosExistentes = await prisma.produtoGlobal.findMany({
@@ -25,12 +29,11 @@ export async function POST(request: Request) {
       select: { codigo_barras: true, id: true },
     });
 
-    const mapaExistentes = new Map(
-      produtosExistentes.map((p: { codigo_barras: string; id: number }) => [
-        p.codigo_barras,
-        p.id,
-      ]),
+    // Tipagem explícita para o TS saber que o get() retorna number | undefined
+    const mapaExistentes = new Map<string, number>(
+      produtosExistentes.map((p) => [p.codigo_barras, p.id]),
     );
+
     type ProdutoImportacao = {
       codigo_barras: string;
       descricao: string;
@@ -48,18 +51,18 @@ export async function POST(request: Request) {
       const ean = linha[0]?.trim();
       if (!ean) continue;
 
-      const dados = {
+      const dados: ProdutoImportacao = {
         codigo_barras: ean,
         descricao: linha[1]?.trim() || "SEM DESCRIÇÃO",
         ncm: linha[2]?.trim() || null,
         categoria: linha[3]?.trim() || null,
         marca: linha[4]?.trim() || null,
-        status_auditoria: "PENDENTE" as const,
+        status_auditoria: "PENDENTE",
       };
 
       const existingId = mapaExistentes.get(ean);
 
-      if (existingId !== undefined) {
+      if (existingId != null) {
         paraAtualizar.push({ id: existingId, data: dados });
       } else {
         novos.push(dados);
@@ -68,10 +71,7 @@ export async function POST(request: Request) {
 
     // 4. Executa as operações em bloco (Transaction)
     await prisma.$transaction([
-      // Insere os novos de uma vez (Rápido)
       prisma.produtoGlobal.createMany({ data: novos, skipDuplicates: true }),
-
-      // Atualiza os existentes (Um por um, mas dentro da transação)
       ...paraAtualizar.map((p) =>
         prisma.produtoGlobal.update({
           where: { id: p.id },
