@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { Prisma } from "@prisma/client";
 import UploadButton from "../components/UploadButton";
+import XMLUploadButton from "../components/XMLUploadButton"; // <-- Nosso botão novo
 import CategorySidebar from "../components/CategorySidebar";
 import ProductTable from "../components/ProductTable";
 import PaginationControls from "../components/PaginationControls";
@@ -56,55 +57,65 @@ export default async function CatalogoPage({
   const totalPages = Math.ceil(totalItens / pageSize);
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="max-w-350 mx-auto">
-        <div className="mb-6 flex flex-col gap-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                Catálogo Global
-              </h1>
-              <p className="text-gray-500 mt-1">
-                Gestão e auditoria de base de dados mestra
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4">
-              <FixColumnsButton />
-              <UploadButton />
-              <div className="bg-white px-4 py-2 rounded-lg border shadow-sm flex gap-3">
-                <div>
-                  <span className="text-xs font-medium text-gray-500 block">
-                    Total Encontrado
-                  </span>
-                  <span className="text-lg font-bold text-blue-600">
-                    {totalItens}
-                  </span>
-                </div>
-              </div>
-            </div>
+    <main className="min-h-screen bg-slate-100 p-4">
+      {/* Container expandido focado em Desktop (98% da tela) */}
+      <div className="max-w-[98vw] mx-auto flex flex-col gap-4">
+        {/* CABEÇALHO (Tudo em uma linha para economizar espaço) */}
+        <header className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex items-center justify-between gap-6">
+          {/* 1. Título */}
+          <div className="shrink-0">
+            <h1 className="text-2xl font-extrabold text-slate-800 tracking-tight leading-none">
+              Catálogo Global
+            </h1>
+            <p className="text-xs text-slate-500 font-medium mt-1 uppercase tracking-wider">
+              Gestão de Base Mestra
+            </p>
           </div>
 
-          <div className="bg-white p-3 rounded-xl border shadow-sm flex items-center">
+          {/* 2. Barra de Pesquisa Central (Ganha o maior espaço) */}
+          <div className="flex-1 max-w-3xl">
             <SearchBar />
           </div>
-        </div>
 
-        <div className="flex flex-col md:flex-row gap-6 items-start">
-          <div className="w-full md:w-auto shrink-0">
-            <CategorySidebar categorias={categoriasResumo} />
+          {/* 3. Ações e Status */}
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Indicador de Total */}
+            <div className="bg-blue-50/50 px-4 py-1.5 rounded-lg border border-blue-100 flex flex-col items-center mr-2">
+              <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">
+                Encontrados
+              </span>
+              <span className="text-lg font-black text-blue-700 leading-none mt-0.5">
+                {totalItens}
+              </span>
+            </div>
+
+            {/* Nossos Botões de Ação */}
+            <FixColumnsButton />
+            <UploadButton />
+            <XMLUploadButton />
           </div>
+        </header>
 
-          <div className="flex-1 flex flex-col bg-white rounded-xl shadow-sm border overflow-hidden">
-            {/* AQUI ESTÁ A MÁGICA: Passando as props novas para a tabela */}
+        {/* ÁREA PRINCIPAL (Sidebar e Tabela) */}
+        <div className="flex gap-4 items-start">
+          {/* Sidebar fixo focado em leitura */}
+          <aside className="w-64 shrink-0 bg-white rounded-xl shadow-sm border border-slate-200 sticky top-4">
+            <CategorySidebar categorias={categoriasResumo} />
+          </aside>
+
+          {/* Área da Tabela */}
+          <section className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
             <ProductTable
               produtos={produtos}
               totalItemsEncontrados={totalItens}
               categoriaFiltro={categoriaFiltro}
               termoBusca={termoBusca}
             />
-            <PaginationControls currentPage={page} totalPages={totalPages} />
-          </div>
+            {/* Paginação ganha um destaque no rodapé */}
+            <div className="bg-slate-50 border-t border-slate-200 p-2">
+              <PaginationControls currentPage={page} totalPages={totalPages} />
+            </div>
+          </section>
         </div>
       </div>
     </main>
