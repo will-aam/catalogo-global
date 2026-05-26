@@ -1,98 +1,66 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import Papa from "papaparse";
+import type { Prisma } from "@prisma/client";
 
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData();
-    const file = formData.get("file") as File;
+    const { ids, categoria, selectAllFilters } = await request.json();
 
-    if (!file) {
+    if (!categoria) {
       return NextResponse.json(
-        { error: "Arquivo não encontrado" },
+        { error: "Categoria inválida" },
         { status: 400 },
       );
     }
 
-    const text = await file.text();
-    const { data } = Papa.parse(text, { header: false, skipEmptyLines: true });
-    const linhas = data.slice(1) as string[][]; // Remove o cabeçalho
+    let whereClause: Prisma.ProdutoGlobalWhereInput = {};
 
-    // 1. Extrai todos os códigos de barras da planilha para uma busca única
-    const codigosPlanilha = linhas
-      .map((l) => l[0]?.trim())
-      .filter((c): c is string => Boolean(c));
+    // 1. Se o usuário clicou no banner "Selecionar TODOS os milhares de itens"
+    if (selectAllFilters) {
+      const conditions: Prisma.ProdutoGlobalWhereInput[] = [];
+      const { categoriaFiltro, termoBusca } = selectAllFilters;
 
-    // 2. Busca o que já existe no banco
-    const produtosExistentes = await prisma.produtoGlobal.findMany({
-      where: { codigo_barras: { in: codigosPlanilha } },
-      select: { codigo_barras: true, id: true },
-    });
-
-    type ProdutoExistente = { codigo_barras: string; id: number };
-
-    const mapaExistentes = new Map<string, number>(
-      (produtosExistentes as ProdutoExistente[]).map((p: ProdutoExistente) => [
-        p.codigo_barras,
-        p.id,
-      ]),
-    );
-
-    type ProdutoImportacao = {
-      codigo_barras: string;
-      descricao: string;
-      ncm: string | null;
-      marca: string | null;
-      categoria: string | null;
-      status_auditoria: "PENDENTE";
-    };
-
-    const novos: ProdutoImportacao[] = [];
-    const paraAtualizar: { id: number; data: ProdutoImportacao }[] = [];
-
-    // 3. Separa quem é novo e quem é atualização
-    for (const linha of linhas) {
-      const ean = linha[0]?.trim();
-      if (!ean) continue;
-
-      const dados: ProdutoImportacao = {
-        codigo_barras: ean,
-        descricao: linha[1]?.trim() || "SEM DESCRIÇÃO",
-        ncm: linha[2]?.trim() || null,
-        categoria: linha[3]?.trim() || null,
-        marca: linha[4]?.trim() || null,
-        status_auditoria: "PENDENTE",
-      };
-
-      const existingId = mapaExistentes.get(ean);
-
-      if (existingId != null) {
-        paraAtualizar.push({ id: existingId, data: dados });
-      } else {
-        novos.push(dados);
+      if (categoriaFiltro === "SEM_CATEGORIA") {
+        conditions.push({ OR: [{ categoria: null }, { categoria: "" }] });
+      } else if (categoriaFiltro) {
+        conditions.push({ categoria: categoriaFiltro });
       }
+
+      if (termoBusca) {
+        conditions.push({
+          OR: [
+            { descricao: { contains: termoBusca, mode: "insensitive" } },
+            { codigo_barras: { contains: termoBusca } },
+          ],
+        });
+      }
+
+      whereClause = conditions.length > 0 ? { AND: conditions } : {};
+    }
+    // 2. Se o usuário selecionou apenas alguns quadradinhos da página atual
+    else if (ids && Array.isArray(ids) && ids.length > 0) {
+      whereClause = { id: { in: ids } };
+    } else {
+      return NextResponse.json(
+        { error: "Nenhum item selecionado" },
+        { status: 400 },
+      );
     }
 
-    // 4. Executa as operações em bloco (Transaction)
-    await prisma.$transaction([
-      prisma.produtoGlobal.createMany({ data: novos, skipDuplicates: true }),
-      ...paraAtualizar.map((p) =>
-        prisma.produtoGlobal.update({
-          where: { id: p.id },
-          data: p.data,
-        }),
-      ),
-    ]);
-
-    return NextResponse.json({
-      sucesso: true,
-      criados: novos.length,
-      atualizados: paraAtualizar.length,
+    // Executa a atualização de uma vez só no banco!
+    const resultado = await prisma.produtoGlobal.updateMany({
+      where: whereClause,
+      data: {
+        categoria: categoria.trim(),
+        status_auditoria: "REVISADO",
+      },
     });
+
+    return NextResponse.json({ success: true, count: resultado.count });
   } catch (error) {
-    console.error(error);
+    console.error("Erro na categorização em lote:", error);
     return NextResponse.json(
-      { error: "Erro ao processar importação" },
+      { error: "Erro ao atualizar itens" },
       { status: 500 },
     );
   }
