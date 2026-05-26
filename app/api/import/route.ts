@@ -6,36 +6,28 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File;
-
-    if (!file) {
+    if (!file)
       return NextResponse.json(
         { error: "Arquivo não encontrado" },
         { status: 400 },
       );
-    }
 
     const text = await file.text();
     const { data } = Papa.parse(text, { header: false, skipEmptyLines: true });
     const linhas = data.slice(1) as string[][]; // Remove o cabeçalho
 
-    const codigosPlanilha = linhas
-      .map((l) => l[0]?.trim())
-      .filter((c): c is string => Boolean(c));
+    // 1. Extrai todos os códigos de barras da planilha para uma busca única
+    const codigosPlanilha = linhas.map((l) => l[0]?.trim()).filter(Boolean);
 
+    // 2. Busca o que já existe no banco
     const produtosExistentes = await prisma.produtoGlobal.findMany({
       where: { codigo_barras: { in: codigosPlanilha } },
       select: { codigo_barras: true, id: true },
     });
 
-    type ProdutoExistente = { codigo_barras: string; id: number };
-
-    const mapaExistentes = new Map<string, number>(
-      (produtosExistentes as ProdutoExistente[]).map((p: ProdutoExistente) => [
-        p.codigo_barras,
-        p.id,
-      ]),
+    const mapaExistentes = new Map(
+      produtosExistentes.map((p) => [p.codigo_barras, p.id]),
     );
-
     type ProdutoImportacao = {
       codigo_barras: string;
       descricao: string;
@@ -48,30 +40,35 @@ export async function POST(request: Request) {
     const novos: ProdutoImportacao[] = [];
     const paraAtualizar: { id: number; data: ProdutoImportacao }[] = [];
 
+    // 3. Separa quem é novo e quem é atualização
     for (const linha of linhas) {
       const ean = linha[0]?.trim();
       if (!ean) continue;
 
-      const dados: ProdutoImportacao = {
+      const dados = {
         codigo_barras: ean,
         descricao: linha[1]?.trim() || "SEM DESCRIÇÃO",
         ncm: linha[2]?.trim() || null,
         categoria: linha[3]?.trim() || null,
         marca: linha[4]?.trim() || null,
-        status_auditoria: "PENDENTE",
+        status_auditoria: "PENDENTE" as const,
       };
 
       const existingId = mapaExistentes.get(ean);
 
-      if (existingId != null) {
+      if (existingId !== undefined) {
         paraAtualizar.push({ id: existingId, data: dados });
       } else {
         novos.push(dados);
       }
     }
 
+    // 4. Executa as operações em bloco (Transaction)
     await prisma.$transaction([
+      // Insere os novos de uma vez (Rápido)
       prisma.produtoGlobal.createMany({ data: novos, skipDuplicates: true }),
+
+      // Atualiza os existentes (Um por um, mas dentro da transação)
       ...paraAtualizar.map((p) =>
         prisma.produtoGlobal.update({
           where: { id: p.id },
