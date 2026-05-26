@@ -25,8 +25,8 @@ export async function POST(request: Request) {
       select: { codigo_barras: true, id: true },
     });
 
-    // CORREÇÃO APLICADA AQUI: Tipagem explícita no "p"
-    const mapaExistentes = new Map(
+    // CORREÇÃO: Map tipado explicitamente como <string, number>
+    const mapaExistentes = new Map<string, number>(
       produtosExistentes.map((p: { codigo_barras: string; id: number }) => [
         p.codigo_barras,
         p.id,
@@ -61,7 +61,8 @@ export async function POST(request: Request) {
 
       const existingId = mapaExistentes.get(ean);
 
-      if (existingId !== undefined) {
+      // CORREÇÃO: Verificação blindada com typeof
+      if (typeof existingId === "number") {
         paraAtualizar.push({ id: existingId, data: dados });
       } else {
         novos.push(dados);
