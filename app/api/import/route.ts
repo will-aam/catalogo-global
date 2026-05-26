@@ -1,66 +1,94 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
+import Papa from "papaparse";
 
 export async function POST(request: Request) {
   try {
-    const { ids, categoria, selectAllFilters } = await request.json();
+    const formData = await request.formData();
+    const file = formData.get("file") as File;
 
-    if (!categoria) {
+    if (!file) {
       return NextResponse.json(
-        { error: "Categoria inválida" },
+        { error: "Arquivo não encontrado" },
         { status: 400 },
       );
     }
 
-    let whereClause: Prisma.ProdutoGlobalWhereInput = {};
+    const text = await file.text();
+    const { data } = Papa.parse(text, { header: false, skipEmptyLines: true });
+    const linhas = data.slice(1) as string[][]; // Remove o cabeçalho
 
-    // 1. Se o usuário clicou no banner "Selecionar TODOS os milhares de itens"
-    if (selectAllFilters) {
-      const conditions: Prisma.ProdutoGlobalWhereInput[] = [];
-      const { categoriaFiltro, termoBusca } = selectAllFilters;
+    const codigosPlanilha = linhas
+      .map((l) => l[0]?.trim())
+      .filter((c): c is string => Boolean(c));
 
-      if (categoriaFiltro === "SEM_CATEGORIA") {
-        conditions.push({ OR: [{ categoria: null }, { categoria: "" }] });
-      } else if (categoriaFiltro) {
-        conditions.push({ categoria: categoriaFiltro });
-      }
-
-      if (termoBusca) {
-        conditions.push({
-          OR: [
-            { descricao: { contains: termoBusca, mode: "insensitive" } },
-            { codigo_barras: { contains: termoBusca } },
-          ],
-        });
-      }
-
-      whereClause = conditions.length > 0 ? { AND: conditions } : {};
-    }
-    // 2. Se o usuário selecionou apenas alguns quadradinhos da página atual
-    else if (ids && Array.isArray(ids) && ids.length > 0) {
-      whereClause = { id: { in: ids } };
-    } else {
-      return NextResponse.json(
-        { error: "Nenhum item selecionado" },
-        { status: 400 },
-      );
-    }
-
-    // Executa a atualização de uma vez só no banco!
-    const resultado = await prisma.produtoGlobal.updateMany({
-      where: whereClause,
-      data: {
-        categoria: categoria.trim(),
-        status_auditoria: "REVISADO",
-      },
+    const produtosExistentes = await prisma.produtoGlobal.findMany({
+      where: { codigo_barras: { in: codigosPlanilha } },
+      select: { codigo_barras: true, id: true },
     });
 
-    return NextResponse.json({ success: true, count: resultado.count });
+    type ProdutoExistente = { codigo_barras: string; id: number };
+
+    const mapaExistentes = new Map<string, number>(
+      (produtosExistentes as ProdutoExistente[]).map((p: ProdutoExistente) => [
+        p.codigo_barras,
+        p.id,
+      ]),
+    );
+
+    type ProdutoImportacao = {
+      codigo_barras: string;
+      descricao: string;
+      ncm: string | null;
+      marca: string | null;
+      categoria: string | null;
+      status_auditoria: "PENDENTE";
+    };
+
+    const novos: ProdutoImportacao[] = [];
+    const paraAtualizar: { id: number; data: ProdutoImportacao }[] = [];
+
+    for (const linha of linhas) {
+      const ean = linha[0]?.trim();
+      if (!ean) continue;
+
+      const dados: ProdutoImportacao = {
+        codigo_barras: ean,
+        descricao: linha[1]?.trim() || "SEM DESCRIÇÃO",
+        ncm: linha[2]?.trim() || null,
+        categoria: linha[3]?.trim() || null,
+        marca: linha[4]?.trim() || null,
+        status_auditoria: "PENDENTE",
+      };
+
+      const existingId = mapaExistentes.get(ean);
+
+      if (existingId != null) {
+        paraAtualizar.push({ id: existingId, data: dados });
+      } else {
+        novos.push(dados);
+      }
+    }
+
+    await prisma.$transaction([
+      prisma.produtoGlobal.createMany({ data: novos, skipDuplicates: true }),
+      ...paraAtualizar.map((p) =>
+        prisma.produtoGlobal.update({
+          where: { id: p.id },
+          data: p.data,
+        }),
+      ),
+    ]);
+
+    return NextResponse.json({
+      sucesso: true,
+      criados: novos.length,
+      atualizados: paraAtualizar.length,
+    });
   } catch (error) {
-    console.error("Erro na categorização em lote:", error);
+    console.error(error);
     return NextResponse.json(
-      { error: "Erro ao atualizar itens" },
+      { error: "Erro ao processar importação" },
       { status: 500 },
     );
   }

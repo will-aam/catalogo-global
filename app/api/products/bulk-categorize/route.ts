@@ -1,32 +1,56 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
+
+type SelectAllFilters = {
+  categoriaFiltro?: string | null;
+  termoBusca?: string | null;
+};
+
+type RequestBody = {
+  ids?: unknown;
+  categoria?: unknown;
+  selectAllFilters?: SelectAllFilters | null;
+};
+
+// Tipos “mínimos” (sem Prisma) só com os campos que este endpoint usa
+type WhereStringContainsInsensitive = { contains: string; mode: "insensitive" };
+type WhereStringContains = { contains: string };
+
+type ProdutoGlobalWhereInput = {
+  AND?: ProdutoGlobalWhereInput[];
+  OR?: ProdutoGlobalWhereInput[];
+  categoria?: string | null;
+  descricao?: WhereStringContainsInsensitive;
+  codigo_barras?: WhereStringContains;
+  id?: { in: number[] };
+};
 
 export async function POST(request: Request) {
   try {
-    const { ids, categoria, selectAllFilters } = await request.json();
+    const body = (await request.json()) as RequestBody;
+    const { ids, categoria, selectAllFilters } = body;
 
-    if (!categoria) {
+    if (typeof categoria !== "string" || !categoria.trim()) {
       return NextResponse.json(
         { error: "Categoria inválida" },
         { status: 400 },
       );
     }
 
-    let whereClause: Prisma.ProdutoGlobalWhereInput = {};
+    let whereClause: ProdutoGlobalWhereInput = {};
 
     // 1. Se o usuário clicou no banner "Selecionar TODOS os milhares de itens"
     if (selectAllFilters) {
-      const conditions: Prisma.ProdutoGlobalWhereInput[] = [];
+      const conditions: ProdutoGlobalWhereInput[] = [];
       const { categoriaFiltro, termoBusca } = selectAllFilters;
 
       if (categoriaFiltro === "SEM_CATEGORIA") {
         conditions.push({ OR: [{ categoria: null }, { categoria: "" }] });
-      } else if (categoriaFiltro) {
+      } else if (typeof categoriaFiltro === "string" && categoriaFiltro) {
         conditions.push({ categoria: categoriaFiltro });
       }
 
-      if (termoBusca) {
+      if (typeof termoBusca === "string" && termoBusca) {
         conditions.push({
           OR: [
             { descricao: { contains: termoBusca, mode: "insensitive" } },
@@ -38,8 +62,15 @@ export async function POST(request: Request) {
       whereClause = conditions.length > 0 ? { AND: conditions } : {};
     }
     // 2. Se o usuário selecionou apenas alguns quadradinhos da página atual
-    else if (ids && Array.isArray(ids) && ids.length > 0) {
-      whereClause = { id: { in: ids } };
+    else if (Array.isArray(ids) && ids.length > 0) {
+      const parsedIds = ids.filter((x): x is number => typeof x === "number");
+      if (parsedIds.length === 0) {
+        return NextResponse.json(
+          { error: "Nenhum item selecionado" },
+          { status: 400 },
+        );
+      }
+      whereClause = { id: { in: parsedIds } };
     } else {
       return NextResponse.json(
         { error: "Nenhum item selecionado" },
@@ -47,7 +78,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Executa a atualização de uma vez só no banco!
     const resultado = await prisma.produtoGlobal.updateMany({
       where: whereClause,
       data: {
