@@ -25,9 +25,14 @@ export async function POST(request: Request) {
       select: { codigo_barras: true, id: true },
     });
 
+    // CORREÇÃO APLICADA AQUI: Tipagem explícita no "p"
     const mapaExistentes = new Map(
-      produtosExistentes.map((p) => [p.codigo_barras, p.id]),
+      produtosExistentes.map((p: { codigo_barras: string; id: number }) => [
+        p.codigo_barras,
+        p.id,
+      ]),
     );
+
     type ProdutoImportacao = {
       codigo_barras: string;
       descricao: string;
