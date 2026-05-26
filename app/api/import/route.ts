@@ -29,9 +29,13 @@ export async function POST(request: Request) {
       select: { codigo_barras: true, id: true },
     });
 
-    // Tipagem explícita para o TS saber que o get() retorna number | undefined
+    type ProdutoExistente = { codigo_barras: string; id: number };
+
     const mapaExistentes = new Map<string, number>(
-      produtosExistentes.map((p) => [p.codigo_barras, p.id]),
+      (produtosExistentes as ProdutoExistente[]).map((p: ProdutoExistente) => [
+        p.codigo_barras,
+        p.id,
+      ]),
     );
 
     type ProdutoImportacao = {
