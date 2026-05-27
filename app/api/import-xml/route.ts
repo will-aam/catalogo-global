@@ -5,128 +5,128 @@ import { XMLParser } from "fast-xml-parser";
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    const file = formData.get("file") as File;
-    if (!file)
+    const files = formData.getAll("files") as File[];
+
+    // Pegamos a marca que o usuário digitou lá na tela
+    const marcaInput = formData.get("marca") as string | null;
+    const marca = marcaInput?.trim() || null;
+
+    if (!files || files.length === 0) {
       return NextResponse.json(
-        { error: "Arquivo não encontrado" },
-        { status: 400 },
-      );
-
-    const xmlText = await file.text();
-
-    // Configuração para ignorar atributos e remover namespaces (nfe:) para ler qualquer XML de nota
-    const parser = new XMLParser({
-      ignoreAttributes: true,
-      removeNSPrefix: true,
-    });
-    const jsonObj = parser.parse(xmlText);
-
-    // Navega até a tag de produtos da NF-e
-    let detNodes =
-      jsonObj?.nfeProc?.NFe?.infNFe?.det || jsonObj?.NFe?.infNFe?.det;
-
-    if (!detNodes) {
-      return NextResponse.json(
-        { error: "XML inválido ou sem produtos" },
+        { error: "Nenhum arquivo encontrado" },
         { status: 400 },
       );
     }
 
-    // Se tiver apenas 1 produto, o XMLParser não cria array, então forçamos ser array
-    if (!Array.isArray(detNodes)) detNodes = [detNodes];
-
-    // Usamos um Map para evitar tentar inserir o mesmo código de barras duas vezes na mesma nota
+    const parser = new XMLParser({
+      ignoreAttributes: true,
+      removeNSPrefix: true,
+    });
     const extractedProducts = new Map<
       string,
       { descricao: string; ncm: string | null }
     >();
+    const isValidEan = (code: string) =>
+      code && code.toUpperCase() !== "SEM GTIN";
 
-    for (const item of detNodes) {
-      const prod = item.prod;
-      if (!prod) continue;
+    // 1. Abre todos os XMLs enviados no lote e junta tudo no grande Map
+    for (const file of files) {
+      const xmlText = await file.text();
+      const jsonObj = parser.parse(xmlText);
 
-      const xProd = prod.xProd ? String(prod.xProd).trim() : "SEM DESCRIÇÃO";
-      const ncm = prod.NCM ? String(prod.NCM).trim() : null;
-      const cEAN = prod.cEAN ? String(prod.cEAN).trim() : "";
-      const cEANTrib = prod.cEANTrib ? String(prod.cEANTrib).trim() : "";
+      let detNodes =
+        jsonObj?.nfeProc?.NFe?.infNFe?.det || jsonObj?.NFe?.infNFe?.det;
+      if (!detNodes) continue;
 
-      // Regra de validação: Só aceita se tiver código de barras válido
-      const isValidEan = (code: string) =>
-        code && code.toUpperCase() !== "SEM GTIN";
+      if (!Array.isArray(detNodes)) detNodes = [detNodes];
 
-      // 1. Lendo o primeiro código de barras (Normalmente a Caixa)
-      if (isValidEan(cEAN)) {
-        extractedProducts.set(cEAN, { descricao: xProd, ncm });
-      }
+      for (const item of detNodes) {
+        const prod = item.prod;
+        if (!prod) continue;
 
-      // 2. Lendo o segundo código de barras (Unidade).
-      // Se for diferente do primeiro, ele cria um novo registro independente!
-      if (isValidEan(cEANTrib) && cEANTrib !== cEAN) {
-        extractedProducts.set(cEANTrib, { descricao: xProd, ncm });
+        const xProd = prod.xProd ? String(prod.xProd).trim() : "SEM DESCRIÇÃO";
+        const ncm = prod.NCM ? String(prod.NCM).trim() : null;
+        const cEAN = prod.cEAN ? String(prod.cEAN).trim() : "";
+        const cEANTrib = prod.cEANTrib ? String(prod.cEANTrib).trim() : "";
+
+        if (isValidEan(cEAN)) {
+          extractedProducts.set(cEAN, { descricao: xProd, ncm });
+        }
+        if (isValidEan(cEANTrib) && cEANTrib !== cEAN) {
+          extractedProducts.set(cEANTrib, { descricao: xProd, ncm });
+        }
       }
     }
 
     const codigosParaProcessar = Array.from(extractedProducts.keys());
     if (codigosParaProcessar.length === 0) {
       return NextResponse.json(
-        { error: "Nenhum código de barras válido na nota" },
+        { error: "Nenhum código de barras válido nas notas" },
         { status: 400 },
       );
     }
 
-    // Busca no banco quem já existe
+    // 2. Busca no banco puxando também a marca atual para sabermos se está vazia
     const produtosExistentes = await prisma.produtoGlobal.findMany({
       where: { codigo_barras: { in: codigosParaProcessar } },
-      select: { codigo_barras: true, id: true },
+      select: { codigo_barras: true, id: true, marca: true },
     });
 
-    const mapaExistentes = new Map<string, number>(
-      produtosExistentes.map((p: { codigo_barras: string; id: number }) => [
+    const mapaExistentes = new Map<
+      string,
+      { id: number; marca: string | null }
+    >(
+      produtosExistentes.map((p) => [
         p.codigo_barras,
-        p.id,
+        { id: p.id, marca: p.marca },
       ]),
     );
 
-    // MOLDES PARA O TYPESCRIPT E ESLINT FICAREM FELIZES
     type ProdutoXMLNovo = {
       codigo_barras: string;
       descricao: string;
       ncm: string | null;
+      marca: string | null;
       origem_dado: "XML";
       status_auditoria: "PENDENTE";
     };
 
     type ProdutoXMLAtualizacao = {
       id: number;
-      data: { ncm: string | null };
+      data: { ncm: string | null; marca?: string };
     };
 
     const novos: ProdutoXMLNovo[] = [];
     const paraAtualizar: ProdutoXMLAtualizacao[] = [];
 
-    // Separa as ações (Insert vs Update)
+    // 3. Distribui os itens aplicando a regra da "Marca"
     for (const [ean, dados] of extractedProducts.entries()) {
-      const existingId = mapaExistentes.get(ean);
+      const existing = mapaExistentes.get(ean);
 
-      if (typeof existingId === "number") {
-        // Se já existe, atualiza APENAS o NCM com a informação oficial da nota
-        paraAtualizar.push({
-          id: existingId,
-          data: { ncm: dados.ncm },
-        });
+      if (existing) {
+        // CORREÇÃO: Removido o "any" e declarada a tipagem exata
+        const updateData: { ncm: string | null; marca?: string } = {
+          ncm: dados.ncm,
+        };
+
+        // Se a marca atual no banco estiver vazia, e você digitou uma marca, preenche!
+        if (marca && !existing.marca) {
+          updateData.marca = marca;
+        }
+        paraAtualizar.push({ id: existing.id, data: updateData });
       } else {
-        // Se é novo, cria do zero
         novos.push({
           codigo_barras: ean,
           descricao: dados.descricao,
           ncm: dados.ncm,
+          marca: marca, // <--- Aplica a marca nova aqui
           origem_dado: "XML",
           status_auditoria: "PENDENTE",
         });
       }
     }
 
-    // Executa no banco de forma segura
+    // 4. Executa a transação no banco
     await prisma.$transaction([
       prisma.produtoGlobal.createMany({ data: novos, skipDuplicates: true }),
       ...paraAtualizar.map((p) =>
@@ -140,9 +140,9 @@ export async function POST(request: Request) {
       atualizados: paraAtualizar.length,
     });
   } catch (error) {
-    console.error("Erro na importação de XML:", error);
+    console.error("Erro na importação de lote de XML:", error);
     return NextResponse.json(
-      { error: "Falha ao processar o arquivo XML" },
+      { error: "Falha ao processar o lote de XML" },
       { status: 500 },
     );
   }
