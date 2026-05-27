@@ -5,7 +5,6 @@ import XMLUploadButton from "../components/XMLUploadButton";
 import CategorySidebar from "../components/CategorySidebar";
 import ProductTable from "../components/ProductTable";
 import PaginationControls from "../components/PaginationControls";
-import FixColumnsButton from "../components/FixColumnsButton";
 import SearchBar from "../components/SearchBar";
 import ScrollToButtons from "../components/ScrollToButtons";
 
@@ -86,7 +85,6 @@ export default async function CatalogoPage({
               </span>
             </div>
 
-            <FixColumnsButton />
             <UploadButton />
             <XMLUploadButton />
           </div>
