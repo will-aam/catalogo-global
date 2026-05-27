@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma";
 import { Prisma } from "@prisma/client";
 import UploadButton from "../components/UploadButton";
 import XMLUploadButton from "../components/XMLUploadButton";
+import PDFUploadButton from "../components/PDFUploadButton"; // <-- Importação do novo botão de PDF
 import CategorySidebar from "../components/CategorySidebar";
 import ProductTable from "../components/ProductTable";
 import PaginationControls from "../components/PaginationControls";
@@ -84,9 +85,9 @@ export default async function CatalogoPage({
                 {totalItens}
               </span>
             </div>
-
             <UploadButton />
             <XMLUploadButton />
+            <PDFUploadButton /> {/* <-- Nosso botão renderizado aqui! */}
           </div>
         </header>
 
