@@ -5,9 +5,9 @@ import { ProdutoGlobal } from "@prisma/client";
 import ProductRow from "./ProductRow";
 import { useRouter } from "next/navigation";
 
-// Criamos o molde exato para o ESLint e TypeScript ficarem felizes
 type BulkPayload = {
-  categoria: string;
+  categoria?: string;
+  marca?: string;
   ids?: number[];
   selectAllFilters?: {
     categoriaFiltro: string | null;
@@ -28,6 +28,7 @@ export default function ProductTable({
 }) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkMarca, setBulkMarca] = useState("");
   const [isSavingBulk, setIsSavingBulk] = useState(false);
   const [selectAllPages, setSelectAllPages] = useState(false);
   const router = useRouter();
@@ -52,12 +53,17 @@ export default function ProductTable({
     setSelectAllPages(false);
   };
 
-  const handleBulkCategorize = async () => {
-    if (!bulkCategory) return alert("Digite a nova categoria!");
+  const handleBulkUpdate = async () => {
+    if (!bulkCategory && !bulkMarca) {
+      return alert("Digite uma Categoria ou uma Marca para atualizar!");
+    }
+
     setIsSavingBulk(true);
     try {
-      // Usamos o nosso molde "BulkPayload" em vez do "any" proibido
-      const payload: BulkPayload = { categoria: bulkCategory };
+      const payload: BulkPayload = {};
+
+      if (bulkCategory) payload.categoria = bulkCategory;
+      if (bulkMarca) payload.marca = bulkMarca;
 
       if (selectAllPages) {
         payload.selectAllFilters = {
@@ -78,12 +84,13 @@ export default function ProductTable({
         setSelectedIds(new Set());
         setSelectAllPages(false);
         setBulkCategory("");
+        setBulkMarca("");
         router.refresh();
       } else {
-        alert("Erro ao categorizar. Verifique a conexão.");
+        alert("Erro ao atualizar. Verifique a conexão.");
       }
     } catch {
-      alert("Erro ao categorizar itens");
+      alert("Erro ao processar a requisição em lote");
     } finally {
       setIsSavingBulk(false);
     }
@@ -92,7 +99,7 @@ export default function ProductTable({
   return (
     <div className="bg-white rounded-xl shadow-sm border overflow-hidden flex-1 relative flex flex-col">
       {selectedIds.size > 0 && (
-        <div className="bg-blue-600 text-white p-3 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-10 shadow-md animate-in slide-in-from-top-2 gap-3">
+        <div className="bg-blue-600 text-white p-3 flex flex-col xl:flex-row items-center justify-between sticky top-0 z-20 shadow-md animate-in slide-in-from-top-2 gap-3 border-b border-blue-700">
           <div className="flex flex-col">
             <span className="font-semibold text-sm">
               {selectAllPages ? (
@@ -134,30 +141,38 @@ export default function ProductTable({
             )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-end">
             <input
               type="text"
-              placeholder="Digite a categoria (ex: Calçados)"
+              placeholder="Nova Marca"
+              value={bulkMarca}
+              onChange={(e) => setBulkMarca(e.target.value)}
+              className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-40 placeholder:text-slate-400"
+            />
+            <input
+              type="text"
+              placeholder="Nova Categoria"
               value={bulkCategory}
               onChange={(e) => setBulkCategory(e.target.value)}
-              className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-48 sm:w-64"
+              className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-48 placeholder:text-slate-400"
             />
             <button
-              onClick={handleBulkCategorize}
+              onClick={handleBulkUpdate}
               disabled={isSavingBulk}
-              className="bg-green-500 hover:bg-green-400 text-white px-4 py-1.5 rounded-md text-sm font-bold transition-colors disabled:opacity-50"
+              className="bg-green-500 hover:bg-green-400 text-white px-5 py-1.5 rounded-md text-sm font-bold transition-colors disabled:opacity-50 shadow-sm"
             >
-              {isSavingBulk ? "..." : "Aplicar"}
+              {isSavingBulk ? "Salvando..." : "Aplicar"}
             </button>
           </div>
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm table-fixed min-w-250">
-          <thead className="bg-gray-100 border-b text-gray-600">
+      {/* Container com scroll interno para permitir o cabeçalho fixo no estilo Excel */}
+      <div className="overflow-auto max-h-[75vh]">
+        <table className="w-full text-left text-sm table-fixed min-w-250 relative">
+          <thead className="bg-gray-100 border-b border-gray-200 text-gray-600 sticky top-0 z-10 shadow-sm">
             <tr>
-              <th className="p-4 w-16 text-center">
+              <th className="p-4 w-16 text-center bg-gray-100">
                 <input
                   type="checkbox"
                   className="w-4 h-4 cursor-pointer accent-blue-600"
@@ -166,19 +181,28 @@ export default function ProductTable({
                   title="Selecionar todos da página"
                 />
               </th>
-              <th className="p-4 font-semibold w-40">Cód. Barras</th>
-              <th className="p-4 font-semibold w-auto">Descrição</th>
-              <th className="p-4 font-semibold w-24">NCM</th>
-              <th className="p-4 font-semibold w-32">Marca</th>
-              <th className="p-4 font-semibold w-40">Categoria</th>
-              <th className="p-4 font-semibold w-32">Status</th>
-              <th className="p-4 font-semibold w-20 text-center">Ações</th>
+              <th className="p-4 font-semibold w-40 bg-gray-100">
+                Cód. Barras
+              </th>
+              <th className="p-4 font-semibold w-auto bg-gray-100">
+                Descrição
+              </th>
+              <th className="p-4 font-semibold w-24 bg-gray-100">NCM</th>
+              <th className="p-4 font-semibold w-32 bg-gray-100">Marca</th>
+              <th className="p-4 font-semibold w-40 bg-gray-100">Categoria</th>
+              <th className="p-4 font-semibold w-32 bg-gray-100">Status</th>
+              <th className="p-4 font-semibold w-20 text-center bg-gray-100">
+                Ações
+              </th>
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody className="divide-y divide-gray-100">
             {produtos.length === 0 ? (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-gray-500">
+                <td
+                  colSpan={8}
+                  className="p-8 text-center text-gray-500 bg-white"
+                >
                   Nenhum produto encontrado.
                 </td>
               </tr>

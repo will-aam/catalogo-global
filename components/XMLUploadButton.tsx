@@ -114,7 +114,7 @@ export default function XMLUploadButton() {
       <button
         onClick={() => fileInputRef.current?.click()}
         disabled={isUploading}
-        className="px-4 py-1.5 bg-orange-500 text-white rounded-lg font-medium text-sm hover:bg-orange-600 transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 whitespace-nowrap min-w-[180px]"
+        className="px-4 py-1.5 bg-orange-500 text-white rounded-lg font-medium text-sm hover:bg-orange-600 transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 whitespace-nowrap min-w-45"
         title="Selecione dezenas ou centenas de XMLs de uma vez"
       >
         {isUploading

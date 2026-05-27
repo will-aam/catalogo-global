@@ -4,18 +4,17 @@ import { Prisma } from "@prisma/client";
 
 export async function POST(request: Request) {
   try {
-    const { ids, categoria, selectAllFilters } = await request.json();
+    const { ids, categoria, marca, selectAllFilters } = await request.json();
 
-    if (!categoria) {
+    if (!categoria && !marca) {
       return NextResponse.json(
-        { error: "Categoria inválida" },
+        { error: "Nenhum dado para atualizar" },
         { status: 400 },
       );
     }
 
     let whereClause: Prisma.ProdutoGlobalWhereInput = {};
 
-    // 1. Se o usuário clicou no banner "Selecionar TODOS os milhares de itens"
     if (selectAllFilters) {
       const conditions: Prisma.ProdutoGlobalWhereInput[] = [];
       const { categoriaFiltro, termoBusca } = selectAllFilters;
@@ -36,9 +35,7 @@ export async function POST(request: Request) {
       }
 
       whereClause = conditions.length > 0 ? { AND: conditions } : {};
-    }
-    // 2. Se o usuário selecionou apenas alguns quadradinhos da página atual
-    else if (ids && Array.isArray(ids) && ids.length > 0) {
+    } else if (ids && Array.isArray(ids) && ids.length > 0) {
       whereClause = { id: { in: ids } };
     } else {
       return NextResponse.json(
@@ -47,13 +44,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Executa a atualização de uma vez só no banco!
+    // Tipo oficial do Prisma aplicado aqui
+    const dataToUpdate: Prisma.ProdutoGlobalUpdateInput = {
+      status_auditoria: "REVISADO",
+    };
+    if (categoria) dataToUpdate.categoria = categoria.trim();
+    if (marca) dataToUpdate.marca = marca.trim();
+
     const resultado = await prisma.produtoGlobal.updateMany({
       where: whereClause,
-      data: {
-        categoria: categoria.trim(),
-        status_auditoria: "REVISADO",
-      },
+      data: dataToUpdate,
     });
 
     return NextResponse.json({ success: true, count: resultado.count });
