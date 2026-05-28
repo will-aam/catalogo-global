@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ProdutoGlobal } from "@prisma/client";
 import ProductRow from "./ProductRow";
 import { useRouter } from "next/navigation";
+import NCMReplaceModal from "./NCMReplaceModal";
 
 type BulkPayload = {
   categoria?: string;
@@ -20,17 +21,20 @@ export default function ProductTable({
   totalItemsEncontrados,
   categoriaFiltro,
   termoBusca,
+  currentSort,
 }: {
   produtos: ProdutoGlobal[];
   totalItemsEncontrados: number;
   categoriaFiltro?: string;
   termoBusca?: string;
+  currentSort?: string;
 }) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkMarca, setBulkMarca] = useState("");
   const [isSavingBulk, setIsSavingBulk] = useState(false);
   const [selectAllPages, setSelectAllPages] = useState(false);
+  const [isReplaceModalOpen, setIsReplaceModalOpen] = useState(false); // Estado do Modal NCM
   const router = useRouter();
 
   const allOnPageSelected =
@@ -96,10 +100,22 @@ export default function ProductTable({
     }
   };
 
+  const handleSortByBarcode = () => {
+    const params = new URLSearchParams(window.location.search);
+    if (currentSort === "asc") {
+      params.set("sort", "desc");
+    } else {
+      params.set("sort", "asc");
+    }
+    params.set("page", "1");
+    router.push(`/?${params.toString()}`);
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border overflow-hidden flex-1 relative flex flex-col">
-      {selectedIds.size > 0 && (
-        <div className="bg-blue-600 text-white p-3 flex flex-col xl:flex-row items-center justify-between sticky top-0 z-20 shadow-md animate-in slide-in-from-top-2 gap-3 border-b border-blue-700">
+      {/* Barra de Ações em Lote */}
+      <div className="bg-blue-600 text-white p-3 flex flex-col xl:flex-row items-center justify-between sticky top-0 z-20 shadow-md border-b border-blue-700 gap-3">
+        {selectedIds.size > 0 ? (
           <div className="flex flex-col">
             <span className="font-semibold text-sm">
               {selectAllPages ? (
@@ -108,66 +124,67 @@ export default function ProductTable({
                   <span className="font-bold underline">
                     {totalItemsEncontrados}
                   </span>{" "}
-                  itens correspondentes selecionados.
+                  itens.
                 </>
               ) : (
-                <>
-                  {selectedIds.size}{" "}
-                  {selectedIds.size === 1
-                    ? "item selecionado"
-                    : "itens selecionados"}
-                </>
+                <>{selectedIds.size} itens selecionados</>
               )}
             </span>
-
             {allOnPageSelected &&
               !selectAllPages &&
               totalItemsEncontrados > produtos.length && (
                 <button
                   onClick={() => setSelectAllPages(true)}
-                  className="text-xs text-blue-200 hover:text-white text-left underline mt-1 font-medium transition-colors"
+                  className="text-xs text-blue-200 hover:text-white underline mt-1 font-medium"
                 >
-                  Selecionar todos os {totalItemsEncontrados} itens
-                  correspondentes à sua pesquisa?
+                  Selecionar todos os {totalItemsEncontrados}?
                 </button>
               )}
-            {selectAllPages && (
+          </div>
+        ) : (
+          <div className="text-sm font-bold opacity-80">
+            Ferramentas de Auditoria
+          </div>
+        )}
+
+        <div className="flex gap-2 flex-wrap justify-end">
+          {/* Botão de Substituir NCM global */}
+          <button
+            onClick={() => setIsReplaceModalOpen(true)}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-md text-sm font-bold transition-colors shadow-sm"
+          >
+            Substituir NCM
+          </button>
+
+          {/* Inputs de edição em lote (só aparecem se houver seleção) */}
+          {selectedIds.size > 0 && (
+            <>
+              <input
+                type="text"
+                placeholder="Nova Marca"
+                value={bulkMarca}
+                onChange={(e) => setBulkMarca(e.target.value)}
+                className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-32"
+              />
+              <input
+                type="text"
+                placeholder="Nova Categoria"
+                value={bulkCategory}
+                onChange={(e) => setBulkCategory(e.target.value)}
+                className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-32"
+              />
               <button
-                onClick={() => setSelectAllPages(false)}
-                className="text-xs text-blue-200 hover:text-white text-left underline mt-1 transition-colors"
+                onClick={handleBulkUpdate}
+                disabled={isSavingBulk}
+                className="bg-green-500 hover:bg-green-400 text-white px-4 py-1.5 rounded-md text-sm font-bold transition-colors shadow-sm"
               >
-                Desfazer seleção total
+                {isSavingBulk ? "..." : "Aplicar"}
               </button>
-            )}
-          </div>
-
-          <div className="flex gap-2 flex-wrap justify-end">
-            <input
-              type="text"
-              placeholder="Nova Marca"
-              value={bulkMarca}
-              onChange={(e) => setBulkMarca(e.target.value)}
-              className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-40 placeholder:text-slate-400"
-            />
-            <input
-              type="text"
-              placeholder="Nova Categoria"
-              value={bulkCategory}
-              onChange={(e) => setBulkCategory(e.target.value)}
-              className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-48 placeholder:text-slate-400"
-            />
-            <button
-              onClick={handleBulkUpdate}
-              disabled={isSavingBulk}
-              className="bg-green-500 hover:bg-green-400 text-white px-5 py-1.5 rounded-md text-sm font-bold transition-colors disabled:opacity-50 shadow-sm"
-            >
-              {isSavingBulk ? "Salvando..." : "Aplicar"}
-            </button>
-          </div>
+            </>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* Container com scroll interno para permitir o cabeçalho fixo no estilo Excel */}
       <div className="overflow-auto max-h-[75vh]">
         <table className="w-full text-left text-sm table-fixed min-w-250 relative">
           <thead className="bg-gray-100 border-b border-gray-200 text-gray-600 sticky top-0 z-10 shadow-sm">
@@ -178,11 +195,22 @@ export default function ProductTable({
                   className="w-4 h-4 cursor-pointer accent-blue-600"
                   checked={allOnPageSelected}
                   onChange={toggleAll}
-                  title="Selecionar todos da página"
                 />
               </th>
-              <th className="p-4 font-semibold w-40 bg-gray-100">
-                Cód. Barras
+              <th
+                className="p-4 font-semibold w-40 bg-gray-100 cursor-pointer hover:bg-slate-200 transition-colors group"
+                onClick={handleSortByBarcode}
+              >
+                <div className="flex items-center gap-1">
+                  Cód. Barras
+                  <span className="text-slate-400 font-bold text-lg">
+                    {currentSort === "asc"
+                      ? "↑"
+                      : currentSort === "desc"
+                        ? "↓"
+                        : "↕"}
+                  </span>
+                </div>
               </th>
               <th className="p-4 font-semibold w-auto bg-gray-100">
                 Descrição
@@ -219,6 +247,12 @@ export default function ProductTable({
           </tbody>
         </table>
       </div>
+
+      {/* Modal fora da tabela */}
+      <NCMReplaceModal
+        isOpen={isReplaceModalOpen}
+        onClose={() => setIsReplaceModalOpen(false)}
+      />
     </div>
   );
 }

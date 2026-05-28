@@ -2,7 +2,7 @@ import { prisma } from "../lib/prisma";
 import { Prisma } from "@prisma/client";
 import UploadButton from "../components/UploadButton";
 import XMLUploadButton from "../components/XMLUploadButton";
-import PDFUploadButton from "../components/PDFUploadButton"; // <-- Importação do novo botão de PDF
+import PDFUploadButton from "../components/PDFUploadButton";
 import CategorySidebar from "../components/CategorySidebar";
 import ProductTable from "../components/ProductTable";
 import PaginationControls from "../components/PaginationControls";
@@ -12,11 +12,17 @@ import ScrollToButtons from "../components/ScrollToButtons";
 export default async function CatalogoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ categoria?: string; page?: string; q?: string }>;
+  searchParams: Promise<{
+    categoria?: string;
+    page?: string;
+    q?: string;
+    sort?: string;
+  }>;
 }) {
   const resolvedParams = await searchParams;
   const categoriaFiltro = resolvedParams.categoria;
   const termoBusca = resolvedParams.q;
+  const sortParam = resolvedParams.sort; // <-- Novo parâmetro de ordenação
   const page = parseInt(resolvedParams.page || "1");
   const pageSize = 200;
 
@@ -40,6 +46,14 @@ export default async function CatalogoPage({
   const where: Prisma.ProdutoGlobalWhereInput =
     conditions.length > 0 ? { AND: conditions } : {};
 
+  // Define a lógica de ordenação
+  const orderByQuery: Prisma.ProdutoGlobalOrderByWithRelationInput =
+    sortParam === "asc"
+      ? { codigo_barras: "asc" }
+      : sortParam === "desc"
+        ? { codigo_barras: "desc" }
+        : { created_at: "desc" };
+
   const [categoriasResumo, totalItens, produtos] = await Promise.all([
     prisma.produtoGlobal.groupBy({
       by: ["categoria"],
@@ -49,7 +63,7 @@ export default async function CatalogoPage({
     prisma.produtoGlobal.count({ where }),
     prisma.produtoGlobal.findMany({
       where,
-      orderBy: { created_at: "desc" },
+      orderBy: orderByQuery, // <-- Aplica a ordenação dinâmica aqui
       take: pageSize,
       skip: (page - 1) * pageSize,
     }),
@@ -59,9 +73,7 @@ export default async function CatalogoPage({
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 relative">
-      {/* Container expandido focado em Desktop */}
       <div className="max-w-[98vw] mx-auto flex flex-col gap-4">
-        {/* CABEÇALHO */}
         <header className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex items-center justify-between gap-6">
           <div className="shrink-0">
             <h1 className="text-2xl font-extrabold text-slate-800 tracking-tight leading-none">
@@ -85,20 +97,19 @@ export default async function CatalogoPage({
                 {totalItens}
               </span>
             </div>
+
             <UploadButton />
             <XMLUploadButton />
-            <PDFUploadButton /> {/* <-- Nosso botão renderizado aqui! */}
+            <PDFUploadButton />
           </div>
         </header>
 
-        {/* ÁREA PRINCIPAL */}
         <div className="flex gap-4 items-start">
           <aside className="w-64 shrink-0 bg-white rounded-xl shadow-sm border border-slate-200 sticky top-4">
             <CategorySidebar categorias={categoriasResumo} />
           </aside>
 
           <section className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-            {/* NOVO: Barra superior da tabela com paginação no topo */}
             <div className="bg-slate-50 border-b border-slate-200 p-2 flex justify-between items-center px-4">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Navegação Superior
@@ -111,17 +122,15 @@ export default async function CatalogoPage({
               totalItemsEncontrados={totalItens}
               categoriaFiltro={categoriaFiltro}
               termoBusca={termoBusca}
+              currentSort={sortParam} // <-- Passamos a ordenação atual para a tabela
             />
 
-            {/* Barra inferior tradicional com paginação na base */}
             <div className="bg-slate-50 border-t border-slate-200 p-2">
               <PaginationControls currentPage={page} totalPages={totalPages} />
             </div>
           </section>
         </div>
       </div>
-
-      {/* Componente flutuante de saltos de página (Topo/Fim) */}
       <ScrollToButtons />
     </main>
   );
