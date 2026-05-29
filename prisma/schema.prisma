@@ -15,6 +15,8 @@ model ProdutoGlobal {
   // Informações Fiscais e de Agrupamento globais
   ncm              String?         @db.VarChar(10)
   categoria        String?         @db.VarChar(100)
+  subcategoria     String?         @db.VarChar(100)
+  
   marca            String?         @db.VarChar(100)
 
   // Metadados para Auditoria e Organização das planilhas
@@ -26,6 +28,7 @@ model ProdutoGlobal {
   updated_at       DateTime        @updatedAt
 
   @@index([categoria])
+  @@index([subcategoria]) // <-- ÍNDICE PARA DEIXAR A API RÁPIDA
   @@index([status_auditoria])
   @@map("produtos_globais")
 }
