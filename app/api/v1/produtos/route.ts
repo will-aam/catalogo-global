@@ -2,6 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request: Request) {
+  // --- 1. SEGURANÇA BLINDADA ---
+  const apiKey = request.headers.get("x-api-key");
+  const validKey = process.env.CATALOG_API_KEY;
+
+  if (!validKey || apiKey !== validKey) {
+    console.warn(
+      "Tentativa de acesso bloqueada (Chave API inválida ou ausente).",
+    );
+    return NextResponse.json({ error: "Acesso Negado" }, { status: 401 });
+  }
+  // -----------------------------
+
   try {
     const { searchParams } = new URL(request.url);
 
@@ -11,8 +23,7 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get("limit") || "100");
     const skip = (page - 1) * limit;
 
-    // --- MODO 1: BUSCA RÁPIDA (SCANNER) ---
-    // Se o sistema de contagem mandou um código de barras, devolvemos só aquele item
+    // --- MODO 1: BUSCA RÁPIDA (SCANNER DO APP DE CONTAGEM) ---
     if (codigoBarras) {
       const produto = await prisma.produtoGlobal.findUnique({
         where: { codigo_barras: codigoBarras },
@@ -22,7 +33,7 @@ export async function GET(request: Request) {
           descricao: true,
           ncm: true,
           categoria: true,
-          subcategoria: true, // O nosso campo novo já está aqui!
+          subcategoria: true,
           marca: true,
         },
       });
@@ -37,8 +48,7 @@ export async function GET(request: Request) {
       return NextResponse.json(produto);
     }
 
-    // --- MODO 2: SINCRONIZAÇÃO EM MASSA (CATÁLOGO GERAL) ---
-    // Se não mandou código, devolvemos uma lista paginada
+    // --- MODO 2: SINCRONIZAÇÃO EM MASSA (LOOP DE 500 EM 500) ---
     const produtos = await prisma.produtoGlobal.findMany({
       skip,
       take: limit,
@@ -51,7 +61,7 @@ export async function GET(request: Request) {
         subcategoria: true,
         marca: true,
       },
-      orderBy: { id: "asc" }, // Ordem padrão para garantir que a sincronização não pule itens
+      orderBy: { id: "asc" }, // Garante que a paginação não se perca
     });
 
     const total = await prisma.produtoGlobal.count();
