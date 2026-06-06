@@ -33,7 +33,7 @@ export default function ProductTable({
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkMarca, setBulkMarca] = useState("");
   const [isSavingBulk, setIsSavingBulk] = useState(false);
-  const [isDeletingBulk, setIsDeletingBulk] = useState(false); // Novo estado para exclusão
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
   const [selectAllPages, setSelectAllPages] = useState(false);
   const [isReplaceModalOpen, setIsReplaceModalOpen] = useState(false);
   const router = useRouter();
@@ -58,16 +58,26 @@ export default function ProductTable({
     setSelectAllPages(false);
   };
 
-  // Função para excluir em lote
-  const handleBulkDelete = async () => {
-    // 1. Identificar a quantidade de itens que serão excluídos
-    const count = selectAllPages ? totalItemsEncontrados : selectedIds.size;
+  // Nova função para lidar com a exportação
+  const handleExport = (format: "csv" | "xlsx", exportAllBase: boolean) => {
+    const params = new URLSearchParams();
+    params.set("format", format);
 
-    // 2. Mensagem de segurança (Confirmação)
+    if (!exportAllBase) {
+      if (categoriaFiltro) params.set("categoriaFiltro", categoriaFiltro);
+      if (termoBusca) params.set("termoBusca", termoBusca);
+    }
+
+    // Redireciona para a rota que criamos no backend, que forçará o download do arquivo
+    window.location.href = `/api/products/export?${params.toString()}`;
+  };
+
+  const handleBulkDelete = async () => {
+    const count = selectAllPages ? totalItemsEncontrados : selectedIds.size;
     const confirmMessage = `Tem certeza que deseja EXCLUIR ${count} produto(s)? Esta ação não pode ser desfeita.`;
 
     if (!window.confirm(confirmMessage)) {
-      return; // Se o usuário clicar em "Cancelar/Não", aborta a função
+      return;
     }
 
     setIsDeletingBulk(true);
@@ -202,9 +212,66 @@ export default function ProductTable({
             Substituir NCM
           </button>
 
+          {/* MENU DROPDOWN DE EXPORTAÇÃO */}
+          <div className="relative inline-block text-left group">
+            <button className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors shadow-sm flex items-center gap-1.5">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" x2="12" y1="15" y2="3" />
+              </svg>
+              Exportar
+            </button>
+            <div className="absolute right-0 mt-1 w-52 bg-white border border-gray-200 rounded-md shadow-lg hidden group-hover:block hover:block z-30 divide-y divide-gray-100">
+              <div className="py-1">
+                <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                  Filtros Atuais da Tela
+                </div>
+                <button
+                  onClick={() => handleExport("csv", false)}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  📄 Baixar em CSV
+                </button>
+                <button
+                  onClick={() => handleExport("xlsx", false)}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  📊 Baixar em Excel (.xlsx)
+                </button>
+              </div>
+              <div className="py-1">
+                <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                  Banco Completo
+                </div>
+                <button
+                  onClick={() => handleExport("csv", true)}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  📄 Baixar Base Inteira (CSV)
+                </button>
+                <button
+                  onClick={() => handleExport("xlsx", true)}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  📊 Baixar Base Inteira (XLSX)
+                </button>
+              </div>
+            </div>
+          </div>
+
           {selectedIds.size > 0 && (
             <>
-              {/* Botão de Exclusão (Vermelho) */}
               <button
                 onClick={handleBulkDelete}
                 disabled={isDeletingBulk || isSavingBulk}
@@ -212,8 +279,9 @@ export default function ProductTable({
               >
                 {isDeletingBulk ? "Excluindo..." : "Excluir Selecionados"}
               </button>
-              <div className="h-6 w-px bg-blue-400 mx-2"></div>{" "}
-              {/* Separador Visual */}
+
+              <div className="h-6 w-px bg-blue-400 mx-2"></div>
+
               <input
                 type="text"
                 placeholder="Nova Marca"
