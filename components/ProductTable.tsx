@@ -33,8 +33,9 @@ export default function ProductTable({
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkMarca, setBulkMarca] = useState("");
   const [isSavingBulk, setIsSavingBulk] = useState(false);
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false); // Novo estado para exclusão
   const [selectAllPages, setSelectAllPages] = useState(false);
-  const [isReplaceModalOpen, setIsReplaceModalOpen] = useState(false); // Estado do Modal NCM
+  const [isReplaceModalOpen, setIsReplaceModalOpen] = useState(false);
   const router = useRouter();
 
   const allOnPageSelected =
@@ -55,6 +56,52 @@ export default function ProductTable({
     else next.add(id);
     setSelectedIds(next);
     setSelectAllPages(false);
+  };
+
+  // Função para excluir em lote
+  const handleBulkDelete = async () => {
+    // 1. Identificar a quantidade de itens que serão excluídos
+    const count = selectAllPages ? totalItemsEncontrados : selectedIds.size;
+
+    // 2. Mensagem de segurança (Confirmação)
+    const confirmMessage = `Tem certeza que deseja EXCLUIR ${count} produto(s)? Esta ação não pode ser desfeita.`;
+
+    if (!window.confirm(confirmMessage)) {
+      return; // Se o usuário clicar em "Cancelar/Não", aborta a função
+    }
+
+    setIsDeletingBulk(true);
+    try {
+      const payload: Omit<BulkPayload, "categoria" | "marca"> = {};
+
+      if (selectAllPages) {
+        payload.selectAllFilters = {
+          categoriaFiltro: categoriaFiltro || null,
+          termoBusca: termoBusca || null,
+        };
+      } else {
+        payload.ids = Array.from(selectedIds);
+      }
+
+      const res = await fetch("/api/products/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setSelectedIds(new Set());
+        setSelectAllPages(false);
+        router.refresh();
+        alert("Produtos excluídos com sucesso!");
+      } else {
+        alert("Erro ao excluir. Verifique a conexão.");
+      }
+    } catch {
+      alert("Erro ao processar a exclusão em lote");
+    } finally {
+      setIsDeletingBulk(false);
+    }
   };
 
   const handleBulkUpdate = async () => {
@@ -135,7 +182,7 @@ export default function ProductTable({
               totalItemsEncontrados > produtos.length && (
                 <button
                   onClick={() => setSelectAllPages(true)}
-                  className="text-xs text-blue-200 hover:text-white underline mt-1 font-medium"
+                  className="text-xs text-blue-200 hover:text-white underline mt-1 font-medium text-left"
                 >
                   Selecionar todos os {totalItemsEncontrados}?
                 </button>
@@ -147,8 +194,7 @@ export default function ProductTable({
           </div>
         )}
 
-        <div className="flex gap-2 flex-wrap justify-end">
-          {/* Botão de Substituir NCM global */}
+        <div className="flex gap-2 flex-wrap justify-end items-center">
           <button
             onClick={() => setIsReplaceModalOpen(true)}
             className="bg-zinc-600 hover:bg-neutral-950 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors shadow-sm"
@@ -156,9 +202,18 @@ export default function ProductTable({
             Substituir NCM
           </button>
 
-          {/* Inputs de edição em lote (só aparecem se houver seleção) */}
           {selectedIds.size > 0 && (
             <>
+              {/* Botão de Exclusão (Vermelho) */}
+              <button
+                onClick={handleBulkDelete}
+                disabled={isDeletingBulk || isSavingBulk}
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-md text-sm font-bold transition-colors shadow-sm disabled:opacity-50 ml-2"
+              >
+                {isDeletingBulk ? "Excluindo..." : "Excluir Selecionados"}
+              </button>
+              <div className="h-6 w-px bg-blue-400 mx-2"></div>{" "}
+              {/* Separador Visual */}
               <input
                 type="text"
                 placeholder="Nova Marca"
@@ -175,8 +230,8 @@ export default function ProductTable({
               />
               <button
                 onClick={handleBulkUpdate}
-                disabled={isSavingBulk}
-                className="bg-green-500 hover:bg-green-400 text-white px-4 py-1.5 rounded-md text-sm font-bold transition-colors shadow-sm"
+                disabled={isSavingBulk || isDeletingBulk}
+                className="bg-green-500 hover:bg-green-400 text-white px-4 py-1.5 rounded-md text-sm font-bold transition-colors shadow-sm disabled:opacity-50"
               >
                 {isSavingBulk ? "..." : "Aplicar"}
               </button>
@@ -248,7 +303,6 @@ export default function ProductTable({
         </table>
       </div>
 
-      {/* Modal fora da tabela */}
       <NCMReplaceModal
         isOpen={isReplaceModalOpen}
         onClose={() => setIsReplaceModalOpen(false)}

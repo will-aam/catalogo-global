@@ -50,6 +50,9 @@ export default function UploadButton() {
         alert(`Erro: ${result.error}`);
       }
     } catch (error) {
+      // Log error for debugging and satisfy lint rules about unused vars
+
+      console.error(error);
       alert("Erro ao enviar o arquivo.");
     } finally {
       setIsUploading(false);
