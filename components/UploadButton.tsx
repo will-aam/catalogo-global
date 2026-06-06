@@ -4,7 +4,13 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 const TEMPLATE_FILE_NAME = "modelo-importacao.csv";
-const TEMPLATE_COLUMNS = ["codigo_barras", "descricao", "ncm", "categoria", "marca"];
+const TEMPLATE_COLUMNS = [
+  "codigo_barras",
+  "descricao",
+  "ncm",
+  "categoria",
+  "marca",
+];
 const TEMPLATE_SAMPLE_ROW = [
   "7891234567890",
   "Produto Exemplo",
@@ -39,16 +45,15 @@ export default function UploadButton() {
 
       if (response.ok) {
         alert(`Sucesso! ${result.inseridos} produtos foram inseridos.`);
-        router.refresh(); // Atualiza a tabela na tela automaticamente
+        router.refresh();
       } else {
         alert(`Erro: ${result.error}`);
       }
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       alert("Erro ao enviar o arquivo.");
     } finally {
       setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = ""; // Limpa o input
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -69,7 +74,8 @@ export default function UploadButton() {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    // Agrupamento em linha ocupando 100% do espaço disponível
+    <div className="flex items-center w-full gap-2 bg-blue-50/50 p-2 border border-blue-100 rounded-lg">
       <input
         type="file"
         accept=".csv"
@@ -77,20 +83,39 @@ export default function UploadButton() {
         ref={fileInputRef}
         onChange={handleFileChange}
       />
+
+      {/* Botão Principal de Importar (flex-1 faz ele esticar e ocupar o espaço) */}
       <button
         onClick={() => fileInputRef.current?.click()}
         disabled={isUploading}
-        className={`px-4 py-2 rounded-lg font-medium text-white transition-colors shadow-sm
-          ${isUploading ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
+        className={`flex-1 px-3 py-2 rounded-md font-medium text-xs text-white transition-colors shadow-sm flex items-center justify-center gap-2
+          ${isUploading ? "bg-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
       >
-        {isUploading ? "Importando..." : "Importar CSV"}
+        {isUploading ? "⏳ Importando..." : "Importar CSV"}
       </button>
+
+      {/* Botão de Ícone para Baixar Modelo (quadradinho ao lado) */}
       <button
         type="button"
         onClick={handleDownloadTemplate}
-        className="px-4 py-2 rounded-lg font-medium text-blue-700 bg-white border border-blue-200 hover:bg-blue-50 transition-colors shadow-sm"
+        title="Baixar modelo de planilha CSV"
+        className="shrink-0 p-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200 transition-colors shadow-sm flex items-center justify-center"
       >
-        Baixar modelo CSV
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" x2="12" y1="15" y2="3" />
+        </svg>
       </button>
     </div>
   );

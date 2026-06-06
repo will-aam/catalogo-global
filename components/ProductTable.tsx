@@ -151,7 +151,7 @@ export default function ProductTable({
           {/* Botão de Substituir NCM global */}
           <button
             onClick={() => setIsReplaceModalOpen(true)}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-md text-sm font-bold transition-colors shadow-sm"
+            className="bg-zinc-600 hover:bg-neutral-950 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors shadow-sm"
           >
             Substituir NCM
           </button>

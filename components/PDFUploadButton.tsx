@@ -125,7 +125,7 @@ export default function PDFUploadButton() {
           className="px-4 py-1.5 bg-red-600 text-white rounded-lg font-medium text-sm hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 whitespace-nowrap"
           title="Extrair produtos de Catálogos em PDF"
         >
-          {isExtracting ? "A ler PDF..." : "📄 Importar PDF"}
+          {isExtracting ? "A ler PDF..." : "Importar PDF"}
         </button>
       </div>
 
