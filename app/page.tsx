@@ -7,7 +7,6 @@ import CategorySidebar from "../components/CategorySidebar";
 import ProductTable from "../components/ProductTable";
 import PaginationControls from "../components/PaginationControls";
 import SearchBar from "../components/SearchBar";
-import ScrollToButtons from "../components/ScrollToButtons";
 
 export default async function CatalogoPage({
   searchParams,
@@ -177,7 +176,6 @@ export default async function CatalogoPage({
           </section>
         </div>
       </div>
-      <ScrollToButtons />
     </main>
   );
 }
