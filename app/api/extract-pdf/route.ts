@@ -1,3 +1,4 @@
+// app/api/extract-pdf/route.ts
 import { NextResponse } from "next/server";
 import { extractText, getDocumentProxy } from "unpdf";
 

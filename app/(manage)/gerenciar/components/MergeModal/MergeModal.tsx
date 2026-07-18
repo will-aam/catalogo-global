@@ -81,26 +81,8 @@ export default function MergeModal({
         onClick={onClose}
       />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-5">
+        <div className="bg-linear-to-r from-purple-600 to-blue-600 p-5">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-white/80"
-            >
-              <path d="M16 3h5v5" />
-              <path d="M8 3H3v5" />
-              <path d="M12 22v-8.3" />
-              <path d="m7 16-4 4" />
-              <path d="m17 20 4-4" />
-            </svg>
             Mesclar {fieldLabel}
           </h3>
           <p className="text-sm text-white/80 mt-1">

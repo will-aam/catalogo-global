@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export async function POST(request: Request) {
   try {
@@ -9,8 +10,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Nomes inválidos" }, { status: 400 });
     }
 
-    // Se for a categoria especial "Sem Categoria", buscamos null ou vazio
-    let whereCondition: any = {};
+    let whereCondition: Prisma.ProdutoGlobalWhereInput;
     if (oldName === "SEM_CATEGORIA") {
       whereCondition = {
         OR: [{ categoria: null }, { categoria: "" }],
@@ -21,14 +21,12 @@ export async function POST(request: Request) {
 
     const resultado = await prisma.produtoGlobal.updateMany({
       where: whereCondition,
-      data: {
-        categoria: newName,
-        status_auditoria: "REVISADO",
-      },
+      data: { categoria: newName },
     });
 
     return NextResponse.json({ success: true, count: resultado.count });
   } catch (error) {
+    console.error("Erro ao renomear categoria:", error);
     return NextResponse.json(
       { error: "Erro ao renomear categoria" },
       { status: 500 },
