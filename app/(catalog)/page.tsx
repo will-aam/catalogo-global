@@ -1,7 +1,8 @@
+// app/(catolog)/page.tsx
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import CatalogHeader from "./components/CatalogHeader";
-import CategorySidebar from "./components/CategorySidebar";
+import CatalogFilters from "./components/CatalogFilters";
 import ProductTable from "./components/ProductTable/ProductTable";
 import PaginationControls from "./components/PaginationControls";
 
@@ -13,14 +14,23 @@ export default async function CatalogoPage({
     page?: string;
     q?: string;
     sort?: string;
+    marca?: string;
+    subcategoria?: string;
+    semNcm?: string;
   }>;
 }) {
   const resolvedParams = await searchParams;
   const categoriaFiltro = resolvedParams.categoria;
+  const marcaFiltro = resolvedParams.marca;
+  const subcategoriaFiltro = resolvedParams.subcategoria;
+  const semNcm = resolvedParams.semNcm;
   const termoBusca = resolvedParams.q;
   const sortParam = resolvedParams.sort;
   const page = parseInt(resolvedParams.page || "1");
   const pageSize = 200;
+
+  // TODO: remover após testar o loading.tsx
+  await new Promise((r) => setTimeout(r, 3000));
 
   const conditions: Prisma.ProdutoGlobalWhereInput[] = [];
 
@@ -28,6 +38,18 @@ export default async function CatalogoPage({
     conditions.push({ OR: [{ categoria: null }, { categoria: "" }] });
   } else if (categoriaFiltro) {
     conditions.push({ categoria: categoriaFiltro });
+  }
+
+  if (marcaFiltro) {
+    conditions.push({ marca: marcaFiltro });
+  }
+
+  if (subcategoriaFiltro && categoriaFiltro) {
+    conditions.push({ subcategoria: subcategoriaFiltro });
+  }
+
+  if (semNcm === "true") {
+    conditions.push({ OR: [{ ncm: null }, { ncm: "" }] });
   }
 
   if (termoBusca) {
@@ -49,12 +71,53 @@ export default async function CatalogoPage({
         ? { codigo_barras: "desc" }
         : { created_at: "desc" };
 
-  const [categoriasResumo, totalItens, produtos] = await Promise.all([
+  const hasCategoriaSelected = !!categoriaFiltro;
+
+  type SubcategoriaGroup = {
+    subcategoria: string | null;
+    _count: { id: number };
+  };
+
+  const subcategoriaFilterConditions: Prisma.ProdutoGlobalWhereInput[] = [
+    { NOT: [{ subcategoria: null }, { subcategoria: "" }] },
+  ];
+
+  if (categoriaFiltro === "SEM_CATEGORIA") {
+    subcategoriaFilterConditions.push({
+      OR: [{ categoria: null }, { categoria: "" }],
+    });
+  } else if (categoriaFiltro) {
+    subcategoriaFilterConditions.push({ categoria: categoriaFiltro });
+  }
+
+  const subcategoriasQuery: Promise<SubcategoriaGroup[]> = hasCategoriaSelected
+    ? (prisma.produtoGlobal.groupBy({
+        by: ["subcategoria"],
+        where: { AND: subcategoriaFilterConditions },
+        _count: { id: true },
+        orderBy: { subcategoria: "asc" },
+      }) as unknown as Promise<SubcategoriaGroup[]>)
+    : Promise.resolve([] as SubcategoriaGroup[]);
+
+  const [
+    categoriasResumo,
+    marcasResumo,
+    subcategoriasResumo,
+    totalItens,
+    produtos,
+  ] = await Promise.all([
     prisma.produtoGlobal.groupBy({
       by: ["categoria"],
       _count: { id: true },
       orderBy: { categoria: "asc" },
     }),
+    prisma.produtoGlobal.groupBy({
+      by: ["marca"],
+      where: { NOT: [{ marca: null }, { marca: "" }] },
+      _count: { id: true },
+      orderBy: { marca: "asc" },
+    }),
+    subcategoriasQuery,
     prisma.produtoGlobal.count({ where }),
     prisma.produtoGlobal.findMany({
       where,
@@ -66,37 +129,58 @@ export default async function CatalogoPage({
 
   const totalPages = Math.ceil(totalItens / pageSize);
 
+  const categoriasOptions = categoriasResumo
+    .map((c) => ({
+      value: c.categoria || "SEM_CATEGORIA",
+      label: c.categoria || "Sem Categoria",
+      count: c._count.id,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const marcasOptions = marcasResumo.map((m) => ({
+    value: m.marca!,
+    label: m.marca!,
+    count: m._count.id,
+  }));
+
+  const subcategoriasOptions = subcategoriasResumo.map((s) => ({
+    value: s.subcategoria!,
+    label: s.subcategoria!,
+    count: s._count.id,
+  }));
+
   return (
     <main className="min-h-screen bg-slate-100 p-4 relative">
       <div className="max-w-[98vw] mx-auto flex flex-col gap-4">
         <CatalogHeader totalItens={totalItens} />
 
-        <div className="flex flex-col md:flex-row gap-4 items-start relative z-10">
-          <aside className="w-full md:w-64 shrink-0 bg-white rounded-xl shadow-sm border border-slate-200 md:sticky md:top-4">
-            <CategorySidebar categorias={categoriasResumo} />
-          </aside>
+        <CatalogFilters
+          key={JSON.stringify(resolvedParams)}
+          categorias={categoriasOptions}
+          marcas={marcasOptions}
+          subcategorias={subcategoriasOptions}
+        />
 
-          <section className="flex-1 w-full bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-            <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-col sm:flex-row justify-between items-center px-4 gap-2">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:block">
-                Navegação Superior
-              </span>
-              <PaginationControls currentPage={page} totalPages={totalPages} />
-            </div>
+        <section className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+          <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-col sm:flex-row justify-between items-center px-4 gap-2">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:block">
+              Navegação Superior
+            </span>
+            <PaginationControls currentPage={page} totalPages={totalPages} />
+          </div>
 
-            <ProductTable
-              produtos={produtos}
-              totalItemsEncontrados={totalItens}
-              categoriaFiltro={categoriaFiltro}
-              termoBusca={termoBusca}
-              currentSort={sortParam}
-            />
+          <ProductTable
+            produtos={produtos}
+            totalItemsEncontrados={totalItens}
+            categoriaFiltro={categoriaFiltro}
+            termoBusca={termoBusca}
+            currentSort={sortParam}
+          />
 
-            <div className="bg-slate-50 border-t border-slate-200 p-2 flex justify-center sm:justify-end">
-              <PaginationControls currentPage={page} totalPages={totalPages} />
-            </div>
-          </section>
-        </div>
+          <div className="bg-slate-50 border-t border-slate-200 p-2 flex justify-center sm:justify-end">
+            <PaginationControls currentPage={page} totalPages={totalPages} />
+          </div>
+        </section>
       </div>
     </main>
   );

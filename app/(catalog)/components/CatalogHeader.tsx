@@ -1,7 +1,6 @@
 import UploadButton from "./import/UploadButton";
 import XMLUploadButton from "./import/XMLUploadButton";
 import PDFUploadButton from "./import/PDFUploadButton";
-import SearchBar from "./SearchBar";
 
 export default function CatalogHeader({ totalItens }: { totalItens: number }) {
   return (
@@ -28,15 +27,10 @@ export default function CatalogHeader({ totalItens }: { totalItens: number }) {
         </div>
       </div>
 
-      {/* Barra de Pesquisa */}
-      <div className="w-full lg:flex-1 lg:max-w-3xl">
-        <SearchBar />
-      </div>
-
       {/* Contador Desktop + Dropdown de Importação */}
-      <div className="w-full lg:w-auto flex items-center justify-between lg:justify-end gap-3 shrink-0">
+      <div className="w-full lg:w-auto flex items-center justify-end gap-3 shrink-0">
         {/* Contador Visível apenas no Desktop */}
-        <div className="hidden lg:flex bg-blue-50/50 px-4 py-1.5 rounded-lg border border-blue-100 flex-col items-center mr-2">
+        <div className="hidden lg:flex bg-blue-50/50 px-4 py-1.5 rounded-lg border border-blue-100 flex-col items-center">
           <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">
             Encontrados
           </span>
