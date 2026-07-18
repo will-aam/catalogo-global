@@ -4,8 +4,7 @@ import { useState } from "react";
 import { ProdutoGlobal } from "@prisma/client";
 import ProductRow from "./ProductRow";
 import { useRouter } from "next/navigation";
-import NCMReplaceModal from "./NCMReplaceModal";
-
+import NCMReplaceModal from "../NCMReplace/NCMReplaceModal";
 type BulkPayload = {
   categoria?: string;
   marca?: string;

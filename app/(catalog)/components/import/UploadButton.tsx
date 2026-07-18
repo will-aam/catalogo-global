@@ -9,13 +9,16 @@ const TEMPLATE_COLUMNS = [
   "descricao",
   "ncm",
   "categoria",
+  "subcategoria",
   "marca",
 ];
+
 const TEMPLATE_SAMPLE_ROW = [
   "7891234567890",
   "Produto Exemplo",
   "22030000",
   "BEBIDAS",
+  "CERVEJAS",
   "MARCA EXEMPLO",
 ];
 
@@ -44,14 +47,20 @@ export default function UploadButton() {
       const result = await response.json();
 
       if (response.ok) {
-        alert(`Sucesso! ${result.inseridos} produtos foram inseridos.`);
+        const criados = result.criados ?? result.inseridos ?? 0;
+        const atualizados = result.atualizados ?? 0;
+        const total = result.total_processado ?? criados + atualizados;
+
+        alert(
+          `Sucesso! ${total} produtos processados.\n` +
+            `• Criados: ${criados}\n` +
+            `• Atualizados: ${atualizados}`,
+        );
         router.refresh();
       } else {
-        alert(`Erro: ${result.error}`);
+        alert(`Erro: ${result.error ?? "Falha ao importar arquivo."}`);
       }
     } catch (error) {
-      // Log error for debugging and satisfy lint rules about unused vars
-
       console.error(error);
       alert("Erro ao enviar o arquivo.");
     } finally {
@@ -77,7 +86,6 @@ export default function UploadButton() {
   };
 
   return (
-    // Agrupamento em linha ocupando 100% do espaço disponível
     <div className="flex items-center w-full gap-2 bg-blue-50/50 p-2 border border-blue-100 rounded-lg">
       <input
         type="file"
@@ -87,8 +95,8 @@ export default function UploadButton() {
         onChange={handleFileChange}
       />
 
-      {/* Botão Principal de Importar (flex-1 faz ele esticar e ocupar o espaço) */}
       <button
+        type="button"
         onClick={() => fileInputRef.current?.click()}
         disabled={isUploading}
         className={`flex-1 px-3 py-2 rounded-md font-medium text-xs text-white transition-colors shadow-sm flex items-center justify-center gap-2
@@ -97,7 +105,6 @@ export default function UploadButton() {
         {isUploading ? "⏳ Importando..." : "Importar CSV"}
       </button>
 
-      {/* Botão de Ícone para Baixar Modelo (quadradinho ao lado) */}
       <button
         type="button"
         onClick={handleDownloadTemplate}
@@ -114,6 +121,7 @@ export default function UploadButton() {
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
+          aria-hidden="true"
         >
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
           <polyline points="7 10 12 15 17 10" />
