@@ -1,5 +1,3 @@
-// app/api/products/[id]/route.ts
-
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -17,11 +15,11 @@ export async function PUT(
       data: {
         codigo_barras: body.codigo_barras,
         descricao: body.descricao,
-        // O segredo: Se o texto for apenas espaços vazios, transforma em null
         ncm: body.ncm?.trim() === "" ? null : body.ncm,
         marca: body.marca?.trim() === "" ? null : body.marca,
         categoria: body.categoria?.trim() === "" ? null : body.categoria,
-        status_auditoria: body.status_auditoria,
+        subcategoria:
+          body.subcategoria?.trim() === "" ? null : body.subcategoria,
       },
     });
 

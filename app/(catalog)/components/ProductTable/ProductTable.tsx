@@ -22,6 +22,7 @@ export default function ProductTable({
 }) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkSubcategoria, setBulkSubcategoria] = useState("");
   const [bulkMarca, setBulkMarca] = useState("");
   const [isSavingBulk, setIsSavingBulk] = useState(false);
   const [isDeletingBulk, setIsDeletingBulk] = useState(false);
@@ -104,8 +105,10 @@ export default function ProductTable({
   };
 
   const handleBulkUpdate = async () => {
-    if (!bulkCategory && !bulkMarca) {
-      return alert("Digite uma Categoria ou uma Marca para atualizar!");
+    if (!bulkCategory && !bulkMarca && !bulkSubcategoria) {
+      return alert(
+        "Digite uma Categoria, Marca ou Subcategoria para atualizar!",
+      );
     }
 
     setIsSavingBulk(true);
@@ -114,6 +117,7 @@ export default function ProductTable({
 
       if (bulkCategory) payload.categoria = bulkCategory;
       if (bulkMarca) payload.marca = bulkMarca;
+      if (bulkSubcategoria) payload.subcategoria = bulkSubcategoria;
 
       if (selectAllPages) {
         payload.selectAllFilters = {
@@ -284,6 +288,13 @@ export default function ProductTable({
                 value={bulkCategory}
                 onChange={(e) => setBulkCategory(e.target.value)}
                 className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-32"
+              />
+              <input
+                type="text"
+                placeholder="Nova Subcategoria"
+                value={bulkSubcategoria}
+                onChange={(e) => setBulkSubcategoria(e.target.value)}
+                className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-36"
               />
               <button
                 onClick={handleBulkUpdate}

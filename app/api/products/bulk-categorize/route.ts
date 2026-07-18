@@ -1,13 +1,13 @@
-// app/api/products/bulk-categorize/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 
 export async function POST(request: Request) {
   try {
-    const { ids, categoria, marca, selectAllFilters } = await request.json();
+    const { ids, categoria, marca, subcategoria, selectAllFilters } =
+      await request.json();
 
-    if (!categoria && !marca) {
+    if (!categoria && !marca && !subcategoria) {
       return NextResponse.json(
         { error: "Nenhum dado para atualizar" },
         { status: 400 },
@@ -45,12 +45,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Tipo oficial do Prisma aplicado aqui
-    const dataToUpdate: Prisma.ProdutoGlobalUpdateInput = {
-      status_auditoria: "REVISADO",
-    };
+    const dataToUpdate: Prisma.ProdutoGlobalUpdateInput = {};
+
     if (categoria) dataToUpdate.categoria = categoria.trim();
     if (marca) dataToUpdate.marca = marca.trim();
+    if (subcategoria) dataToUpdate.subcategoria = subcategoria.trim();
 
     const resultado = await prisma.produtoGlobal.updateMany({
       where: whereClause,

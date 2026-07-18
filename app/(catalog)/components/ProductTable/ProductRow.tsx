@@ -25,10 +25,7 @@ export default function ProductRow({
       const res = await fetch(`/api/products/${produto.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...editData,
-          status_auditoria: "REVISADO",
-        }),
+        body: JSON.stringify(editData),
       });
 
       if (res.ok) {

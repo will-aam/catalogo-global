@@ -5,6 +5,7 @@ export type CategoriaCount = {
 
 export type BulkPayload = {
   categoria?: string;
+  subcategoria?: string;
   marca?: string;
   ids?: number[];
   selectAllFilters?: {
