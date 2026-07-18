@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ProdutoGlobal } from "@prisma/client";
 import { useRouter } from "next/navigation";
+
+type NcmResult = { codigo: string; descricao: string; score: number };
 
 export default function ProductRow({
   produto,
@@ -20,6 +22,88 @@ export default function ProductRow({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const router = useRouter();
 
+  // ─── NCM FUZZY SEARCH ────────────────────────────────────────
+  const [ncmSearchOpen, setNcmSearchOpen] = useState(false);
+  const [ncmSearchTerm, setNcmSearchTerm] = useState("");
+  const [ncmResults, setNcmResults] = useState<NcmResult[]>([]);
+  const [ncmSearchLoading, setNcmSearchLoading] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+  const ncmSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Fecha dropdown ao clicar fora ou Escape
+  useEffect(() => {
+    if (!ncmSearchOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      const dd = document.getElementById("ncm-search-dropdown");
+      const btn = document.getElementById("ncm-search-btn");
+      if (
+        dd &&
+        !dd.contains(e.target as Node) &&
+        btn &&
+        !btn.contains(e.target as Node)
+      ) {
+        setNcmSearchOpen(false);
+      }
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setNcmSearchOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleEsc);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, [ncmSearchOpen]);
+
+  const searchNcm = async (term: string) => {
+    if (term.trim().length < 3) {
+      setNcmResults([]);
+      return;
+    }
+    setNcmSearchLoading(true);
+    try {
+      const res = await fetch(
+        `/api/ncm/search?q=${encodeURIComponent(term)}&limit=12`,
+      );
+      const data = await res.json();
+      setNcmResults(data.results || []);
+    } catch {
+      setNcmResults([]);
+    } finally {
+      setNcmSearchLoading(false);
+    }
+  };
+
+  const openNcmSearch = (e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const ddWidth = 420;
+    const left = Math.max(
+      8,
+      Math.min(rect.left, window.innerWidth - ddWidth - 8),
+    );
+    setDropdownPos({ top: rect.bottom + 4, left });
+    setNcmSearchOpen(true);
+    const initial = editData.descricao || "";
+    setNcmSearchTerm(initial);
+    if (initial.trim().length >= 3) {
+      searchNcm(initial);
+    }
+  };
+
+  const handleSearchInputChange = (value: string) => {
+    setNcmSearchTerm(value);
+    if (ncmSearchTimer.current) clearTimeout(ncmSearchTimer.current);
+    ncmSearchTimer.current = setTimeout(() => searchNcm(value), 300);
+  };
+
+  const selectNcm = (codigo: string) => {
+    setEditData({ ...editData, ncm: codigo });
+    setNcmSearchOpen(false);
+    setNcmResults([]);
+  };
+
+  // ─── SALVAR ─────────────────────────────────────────────────
   const handleSave = async () => {
     setIsLoading(true);
     try {
@@ -28,7 +112,6 @@ export default function ProductRow({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editData),
       });
-
       if (res.ok) {
         setIsEditing(false);
         router.refresh();
@@ -40,13 +123,13 @@ export default function ProductRow({
     }
   };
 
+  // ─── EXCLUIR ────────────────────────────────────────────────
   const handleDelete = async () => {
     setIsLoading(true);
     try {
       const res = await fetch(`/api/products/${produto.id}`, {
         method: "DELETE",
       });
-
       if (res.ok) {
         setShowDeleteModal(false);
         setIsDeleted(true);
@@ -67,87 +150,227 @@ export default function ProductRow({
   // ═══════════════════════════════════════════════════════════════
   if (isEditing) {
     return (
-      <tr className="bg-blue-50/50 transition-colors">
-        <td className="p-2 text-center">
-          <input
-            type="checkbox"
-            checked={isSelected}
-            readOnly
-            disabled
-            className="w-4 h-4 cursor-not-allowed opacity-50 accent-blue-600"
-          />
-        </td>
-        <td className="p-2">
-          <input
-            className="w-full p-1.5 border rounded text-xs font-mono outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-            value={editData.codigo_barras || ""}
-            onChange={(e) =>
-              setEditData({ ...editData, codigo_barras: e.target.value })
-            }
-          />
-        </td>
-        <td className="p-2">
-          <input
-            className="w-full p-1.5 border rounded text-xs font-medium outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-            value={editData.descricao || ""}
-            onChange={(e) =>
-              setEditData({ ...editData, descricao: e.target.value })
-            }
-          />
-        </td>
-        <td className="p-2">
-          <input
-            className="w-full p-1.5 border rounded text-xs font-mono outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-            value={editData.ncm || ""}
-            onChange={(e) => setEditData({ ...editData, ncm: e.target.value })}
-            placeholder="33051000"
-          />
-        </td>
-        <td className="p-2">
-          <input
-            className="w-full p-1.5 border rounded text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-            value={editData.marca || ""}
-            onChange={(e) =>
-              setEditData({ ...editData, marca: e.target.value })
-            }
-          />
-        </td>
-        <td className="p-2">
-          <input
-            className="w-full p-1.5 border rounded text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-            value={editData.categoria || ""}
-            onChange={(e) =>
-              setEditData({ ...editData, categoria: e.target.value })
-            }
-          />
-        </td>
-        <td className="p-2">
-          <input
-            className="w-full p-1.5 border rounded text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-            value={editData.subcategoria || ""}
-            onChange={(e) =>
-              setEditData({ ...editData, subcategoria: e.target.value })
-            }
-          />
-        </td>
-        <td className="p-2 text-center">
-          <div className="flex justify-center gap-2 flex-wrap">
-            <button
-              onClick={handleSave}
-              disabled={isLoading}
-              className="bg-green-100 text-green-700 px-3 py-1.5 rounded font-bold text-xs hover:bg-green-200 transition-colors shadow-sm flex items-center gap-1"
-            >
-              {isLoading ? "Salvando..." : "✓ Salvar"}
-            </button>
-            <button
-              onClick={() => setIsEditing(false)}
-              className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded font-bold text-xs hover:bg-gray-200 transition-colors shadow-sm flex items-center gap-1"
-            >
-              ✕ Cancelar
-            </button>
-          </div>
-        </td>
-      </tr>
+      <>
+        <tr className="bg-blue-50/50 transition-colors">
+          <td className="p-2 text-center">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              readOnly
+              disabled
+              className="w-4 h-4 cursor-not-allowed opacity-50 accent-blue-600"
+            />
+          </td>
+          <td className="p-2">
+            <input
+              className="w-full p-1.5 border rounded text-xs font-mono outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+              value={editData.codigo_barras || ""}
+              onChange={(e) =>
+                setEditData({ ...editData, codigo_barras: e.target.value })
+              }
+            />
+          </td>
+          <td className="p-2">
+            <input
+              className="w-full p-1.5 border rounded text-xs font-medium outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+              value={editData.descricao || ""}
+              onChange={(e) =>
+                setEditData({ ...editData, descricao: e.target.value })
+              }
+            />
+          </td>
+
+          {/* NCM COM BUSCA FUZZY */}
+          <td className="p-2">
+            <div className="flex items-center gap-1">
+              <input
+                className="w-full p-1.5 border rounded text-xs font-mono outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                value={editData.ncm || ""}
+                onChange={(e) =>
+                  setEditData({ ...editData, ncm: e.target.value })
+                }
+                placeholder="33051000"
+              />
+              <button
+                id="ncm-search-btn"
+                type="button"
+                onClick={openNcmSearch}
+                className="shrink-0 p-1.5 bg-amber-50 text-amber-600 rounded hover:bg-amber-100 transition-colors"
+                title="Buscar NCM pela descrição do produto"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+              </button>
+            </div>
+          </td>
+
+          <td className="p-2">
+            <input
+              className="w-full p-1.5 border rounded text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+              value={editData.marca || ""}
+              onChange={(e) =>
+                setEditData({ ...editData, marca: e.target.value })
+              }
+            />
+          </td>
+          <td className="p-2">
+            <input
+              className="w-full p-1.5 border rounded text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+              value={editData.categoria || ""}
+              onChange={(e) =>
+                setEditData({ ...editData, categoria: e.target.value })
+              }
+            />
+          </td>
+          <td className="p-2">
+            <input
+              className="w-full p-1.5 border rounded text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+              value={editData.subcategoria || ""}
+              onChange={(e) =>
+                setEditData({ ...editData, subcategoria: e.target.value })
+              }
+            />
+          </td>
+          <td className="p-2 text-center">
+            <div className="flex justify-center gap-2 flex-wrap">
+              <button
+                onClick={handleSave}
+                disabled={isLoading}
+                className="bg-green-100 text-green-700 px-3 py-1.5 rounded font-bold text-xs hover:bg-green-200 transition-colors shadow-sm flex items-center gap-1"
+              >
+                {isLoading ? "Salvando..." : "✓ Salvar"}
+              </button>
+              <button
+                onClick={() => setIsEditing(false)}
+                className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded font-bold text-xs hover:bg-gray-200 transition-colors shadow-sm flex items-center gap-1"
+              >
+                ✕ Cancelar
+              </button>
+            </div>
+          </td>
+        </tr>
+
+        {/* DROPDOWN DE BUSCA NCM */}
+        {ncmSearchOpen && (
+          <tr>
+            <td colSpan={8} className="p-0">
+              <div
+                id="ncm-search-dropdown"
+                className="fixed bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden"
+                style={{
+                  top: dropdownPos.top,
+                  left: dropdownPos.left,
+                  width: 420,
+                  zIndex: 10001,
+                }}
+              >
+                {/* Input de busca */}
+                <div className="p-2.5 border-b border-gray-100 bg-slate-50/80">
+                  <div className="relative">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+                    >
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="m21 21-4.3-4.3" />
+                    </svg>
+                    <input
+                      autoFocus
+                      value={ncmSearchTerm}
+                      onChange={(e) => handleSearchInputChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") setNcmSearchOpen(false);
+                      }}
+                      placeholder="Buscar por descrição do NCM..."
+                      className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Resultados */}
+                <div className="max-h-60 overflow-auto">
+                  {ncmSearchLoading && ncmResults.length === 0 ? (
+                    <div className="flex items-center justify-center gap-2 py-8 text-gray-400 text-xs">
+                      <svg
+                        className="animate-spin h-3.5 w-3.5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
+                      </svg>
+                      Buscando NCMs...
+                    </div>
+                  ) : ncmResults.length === 0 ? (
+                    <div className="py-8 text-center text-gray-400 text-xs">
+                      {ncmSearchTerm.length < 3
+                        ? "Digite ao menos 3 caracteres"
+                        : "Nenhum NCM encontrado"}
+                    </div>
+                  ) : (
+                    ncmResults.map((item, i) => (
+                      <button
+                        key={`${item.codigo}-${i}`}
+                        type="button"
+                        onClick={() => selectNcm(item.codigo)}
+                        className="w-full text-left px-3 py-2.5 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0"
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <span className="font-mono text-[11px] font-bold text-blue-700 shrink-0 mt-px bg-blue-50 px-1.5 py-0.5 rounded">
+                            {item.codigo}
+                          </span>
+                          <span className="text-xs text-gray-600 leading-relaxed line-clamp-2">
+                            {item.descricao}
+                          </span>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="px-3 py-1.5 border-t border-gray-100 bg-slate-50/80">
+                  <p className="text-[10px] text-gray-400">
+                    {ncmResults.length} resultado(s) — busca fuzzy pela
+                    descrição
+                  </p>
+                </div>
+              </div>
+            </td>
+          </tr>
+        )}
+      </>
     );
   }
 
@@ -285,10 +508,11 @@ export default function ProductRow({
         </td>
       </tr>
 
+      {/* MODAL DE EXCLUSÃO */}
       {showDeleteModal && (
         <tr>
           <td colSpan={8} className="p-0">
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 z-10000 flex items-center justify-center p-4">
               <div
                 className="absolute inset-0 bg-black/40 backdrop-blur-sm"
                 onClick={() => !isLoading && setShowDeleteModal(false)}
