@@ -2,11 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-
-type CategoriaCount = {
-  categoria: string | null;
-  _count: { id: number };
-};
+import type { CategoriaCount } from "@/app/(catalog)/types";
 
 export default function CategorySidebar({
   categorias,

@@ -5,15 +5,7 @@ import { ProdutoGlobal } from "@prisma/client";
 import ProductRow from "./ProductRow";
 import { useRouter } from "next/navigation";
 import NCMReplaceModal from "../NCMReplace/NCMReplaceModal";
-type BulkPayload = {
-  categoria?: string;
-  marca?: string;
-  ids?: number[];
-  selectAllFilters?: {
-    categoriaFiltro: string | null;
-    termoBusca: string | null;
-  };
-};
+import type { BulkPayload } from "@/app/(catalog)/types";
 
 export default function ProductTable({
   produtos,

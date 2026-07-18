@@ -3,12 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-type ProdutoExtraido = {
-  codigo_barras: string;
-  descricao: string;
-  ncm: string;
-  marca: string;
-};
+import type { ProdutoExtraido } from "@/app/(catalog)/types";
 
 export default function PDFUploadButton() {
   const [isExtracting, setIsExtracting] = useState(false);

@@ -2,25 +2,11 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-
-const TEMPLATE_FILE_NAME = "modelo-importacao.csv";
-const TEMPLATE_COLUMNS = [
-  "codigo_barras",
-  "descricao",
-  "ncm",
-  "categoria",
-  "subcategoria",
-  "marca",
-];
-
-const TEMPLATE_SAMPLE_ROW = [
-  "7891234567890",
-  "Produto Exemplo",
-  "22030000",
-  "BEBIDAS",
-  "CERVEJAS",
-  "MARCA EXEMPLO",
-];
+import {
+  TEMPLATE_FILE_NAME,
+  TEMPLATE_COLUMNS,
+  TEMPLATE_SAMPLE_ROW,
+} from "@/app/(catalog)/constants";
 
 export default function UploadButton() {
   const [isUploading, setIsUploading] = useState(false);
