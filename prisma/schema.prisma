@@ -33,6 +33,19 @@ model ProdutoGlobal {
   @@map("produtos_globais")
 }
 
+// Adicionar ao final do schema.prisma, antes dos @@map:
+
+model NCM {
+  id         Int      @id @default(autoincrement())
+  codigo     String   @unique
+  descricao  String
+  criado_em  DateTime @default(now())
+
+  @@index([codigo])
+  @@index([descricao])
+  @@map("tabela_ncm")
+}
+
 enum StatusAuditoria {
   PENDENTE
   REVISADO
