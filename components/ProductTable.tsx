@@ -58,7 +58,6 @@ export default function ProductTable({
     setSelectAllPages(false);
   };
 
-  // Nova função para lidar com a exportação
   const handleExport = (format: "csv" | "xlsx", exportAllBase: boolean) => {
     const params = new URLSearchParams();
     params.set("format", format);
@@ -68,7 +67,6 @@ export default function ProductTable({
       if (termoBusca) params.set("termoBusca", termoBusca);
     }
 
-    // Redireciona para a rota que criamos no backend, que forçará o download do arquivo
     window.location.href = `/api/products/export?${params.toString()}`;
   };
 
@@ -341,7 +339,9 @@ export default function ProductTable({
               <th className="p-4 font-semibold w-24 bg-gray-100">NCM</th>
               <th className="p-4 font-semibold w-32 bg-gray-100">Marca</th>
               <th className="p-4 font-semibold w-40 bg-gray-100">Categoria</th>
-              <th className="p-4 font-semibold w-32 bg-gray-100">Status</th>
+              <th className="p-4 font-semibold w-40 bg-gray-100">
+                Subcategoria
+              </th>
               <th className="p-4 font-semibold w-20 text-center bg-gray-100">
                 Ações
               </th>

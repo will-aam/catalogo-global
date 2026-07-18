@@ -124,7 +124,16 @@ export default function ProductRow({
             }
           />
         </td>
-        <td className="p-2 text-center" colSpan={2}>
+        <td className="p-2">
+          <input
+            className="w-full p-1.5 border rounded text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+            value={editData.subcategoria || ""}
+            onChange={(e) =>
+              setEditData({ ...editData, subcategoria: e.target.value })
+            }
+          />
+        </td>
+        <td className="p-2 text-center">
           <div className="flex justify-center gap-2 flex-wrap">
             <button
               onClick={handleSave}
@@ -160,7 +169,6 @@ export default function ProductRow({
         />
       </td>
 
-      {/* CÓDIGO DE BARRAS CLICÁVEL COM BUSCA NO GOOGLE */}
       <td className="p-2 sm:p-4 font-mono font-medium whitespace-nowrap">
         {editData.codigo_barras ? (
           <a
@@ -214,23 +222,14 @@ export default function ProductRow({
         </span>
       </td>
 
-      <td className="p-2 sm:p-4 whitespace-nowrap">
-        <span
-          className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-block ${
-            editData.status_auditoria === "PENDENTE"
-              ? "bg-yellow-100 text-yellow-700"
-              : editData.status_auditoria === "REVISADO"
-                ? "bg-green-100 text-green-700"
-                : "bg-red-100 text-red-700"
-          }`}
-        >
-          {editData.status_auditoria}
+      <td className="p-2 sm:p-4 truncate max-w-37.5">
+        <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-xs font-medium border truncate inline-block max-w-full">
+          {editData.subcategoria || "—"}
         </span>
       </td>
 
       <td className="p-2 sm:p-4 whitespace-nowrap">
         <div className="flex justify-center gap-1 sm:gap-2">
-          {/* BOTÃO EDITAR (ÍCONE SVG) */}
           <button
             onClick={() => setIsEditing(true)}
             className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
@@ -252,7 +251,6 @@ export default function ProductRow({
             </svg>
           </button>
 
-          {/* BOTÃO EXCLUIR (ÍCONE SVG) */}
           <button
             onClick={handleDelete}
             disabled={isLoading}
