@@ -1,3 +1,4 @@
+// app/(catalog)/components/ProductTable/ProductTable.tsx
 "use client";
 
 import { useState } from "react";
@@ -338,7 +339,7 @@ export default function ProductTable({
               <th className="p-4 font-semibold w-auto bg-gray-100">
                 Descrição
               </th>
-              <th className="p-4 font-semibold w-24 bg-gray-100">NCM</th>
+              <th className="p-4 font-semibold w-36 bg-gray-100">NCM</th>
               <th className="p-4 font-semibold w-32 bg-gray-100">Marca</th>
               <th className="p-4 font-semibold w-40 bg-gray-100">Categoria</th>
               <th className="p-4 font-semibold w-40 bg-gray-100">

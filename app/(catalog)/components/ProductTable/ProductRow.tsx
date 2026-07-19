@@ -1,3 +1,4 @@
+// app/(catalog)/components/ProductTable/ProductRow.tsx
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -29,6 +30,45 @@ export default function ProductRow({
   const [ncmSearchLoading, setNcmSearchLoading] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const ncmSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ─── GTIN API SEARCH ────────────────────────────────────────
+  const [gtinLoading, setGtinLoading] = useState(false);
+
+  const handleGtinSearch = async () => {
+    const ean = editData.codigo_barras?.replace(/\D/g, "");
+
+    if (!ean || ean.length < 8) {
+      alert("Digite um código de barras (EAN/GTIN) válido para buscar.");
+      return;
+    }
+
+    setGtinLoading(true);
+    try {
+      const res = await fetch(`/api/ncm/gtin/${ean}`);
+
+      if (res.status === 404) {
+        alert("Produto não encontrado na base de dados global.");
+        return;
+      }
+
+      if (!res.ok) throw new Error("Erro ao buscar o GTIN");
+
+      const data = await res.json();
+
+      // Atualiza o formulário com os dados encontrados
+      setEditData((prev) => ({
+        ...prev,
+        ncm: data.ncm || prev.ncm,
+        descricao: data.nome || prev.descricao, // Opcional: preenche o nome
+        marca: data.marca || prev.marca, // Opcional: preenche a marca
+        categoria: data.categoria || prev.categoria, // Opcional
+      }));
+    } catch {
+      alert("Erro de conexão ao consultar o Código de Barras.");
+    } finally {
+      setGtinLoading(false);
+    }
+  };
 
   // Fecha dropdown ao clicar fora ou Escape
   useEffect(() => {
@@ -161,15 +201,67 @@ export default function ProductRow({
               className="w-4 h-4 cursor-not-allowed opacity-50 accent-blue-600"
             />
           </td>
+
+          {/* CÓDIGO DE BARRAS COM BUSCA GTIN */}
           <td className="p-2">
-            <input
-              className="w-full p-1.5 border rounded text-xs font-mono outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-              value={editData.codigo_barras || ""}
-              onChange={(e) =>
-                setEditData({ ...editData, codigo_barras: e.target.value })
-              }
-            />
+            <div className="flex items-center gap-1">
+              <input
+                className="w-full p-1.5 border rounded text-xs font-mono outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                value={editData.codigo_barras || ""}
+                onChange={(e) =>
+                  setEditData({ ...editData, codigo_barras: e.target.value })
+                }
+              />
+              <button
+                type="button"
+                onClick={handleGtinSearch}
+                disabled={gtinLoading}
+                className="shrink-0 p-1.5 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                title="Preencher dados usando o Código de Barras"
+              >
+                {gtinLoading ? (
+                  <svg
+                    className="animate-spin h-3.5 w-3.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3 5v14" />
+                    <path d="M8 5v14" />
+                    <path d="M12 5v14" />
+                    <path d="M17 5v14" />
+                    <path d="M21 5v14" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </td>
+
           <td className="p-2">
             <input
               className="w-full p-1.5 border rounded text-xs font-medium outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
@@ -433,7 +525,7 @@ export default function ProductRow({
         </td>
 
         <td
-          className="p-2 sm:p-4 text-gray-500 font-mono text-xs truncate max-w-25 whitespace-nowrap"
+          className="p-2 sm:p-4 text-gray-500 font-mono text-sm truncate max-w-36 whitespace-nowrap"
           title={produto.ncm || undefined}
         >
           {produto.ncm || "-"}
