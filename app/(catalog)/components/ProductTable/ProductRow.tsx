@@ -58,7 +58,7 @@ export default function ProductRow({
       // Atualiza o formulário com os dados encontrados
       setEditData((prev) => ({
         ...prev,
-        ncm: data.ncm || prev.ncm,
+        ncm: data.ncm ? data.ncm.replace(/\D/g, "") : prev.ncm,
         descricao: data.nome || prev.descricao, // Opcional: preenche o nome
         marca: data.marca || prev.marca, // Opcional: preenche a marca
         categoria: data.categoria || prev.categoria, // Opcional
@@ -138,7 +138,7 @@ export default function ProductRow({
   };
 
   const selectNcm = (codigo: string) => {
-    setEditData({ ...editData, ncm: codigo });
+    setEditData({ ...editData, ncm: codigo.replace(/\D/g, "") });
     setNcmSearchOpen(false);
     setNcmResults([]);
   };
@@ -279,7 +279,10 @@ export default function ProductRow({
                 className="w-full p-1.5 border rounded text-xs font-mono outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                 value={editData.ncm || ""}
                 onChange={(e) =>
-                  setEditData({ ...editData, ncm: e.target.value })
+                  setEditData({
+                    ...editData,
+                    ncm: e.target.value.replace(/\D/g, ""),
+                  })
                 }
                 placeholder="33051000"
               />
