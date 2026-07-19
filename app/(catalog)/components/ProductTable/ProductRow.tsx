@@ -7,6 +7,114 @@ import { useRouter } from "next/navigation";
 
 type NcmResult = { codigo: string; descricao: string; score: number };
 
+// ─── COMPONENTE REUTILIZÁVEL DE AUTOCOMPLETE ──────────────────
+function AutocompleteInput({
+  value,
+  onChange,
+  type,
+  placeholder,
+  className,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  type: "marca" | "categoria" | "subcategoria" | "ncm";
+  placeholder?: string;
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<
+    Array<string | { codigo: string; descricao: string }>
+  >([]);
+  const [loading, setLoading] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchSuggestions = async (term: string) => {
+    if (term.length < 3) {
+      setSuggestions([]);
+      setIsOpen(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/suggestions?type=${type}&q=${encodeURIComponent(term)}`,
+      );
+      const data = await res.json();
+      setSuggestions(data);
+      setIsOpen(data.length > 0);
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    onChange(val);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => fetchSuggestions(val), 300);
+  };
+
+  return (
+    <div className="relative w-full">
+      <input
+        value={value}
+        onChange={handleInputChange}
+        onFocus={() => {
+          if (suggestions.length > 0) setIsOpen(true);
+        }}
+        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+        placeholder={placeholder}
+        className={className}
+      />
+
+      {/* Dropdown de Sugestões */}
+      {isOpen && (
+        <ul className="absolute z-10005 w-64 mt-1 max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-xl text-xs divide-y divide-gray-50">
+          {loading && <li className="p-2 text-gray-400">Buscando...</li>}
+          {!loading &&
+            suggestions.map((item, i) => {
+              // Trata NCM (Objeto) vs Marcas/Categorias (String)
+              const isObj = typeof item === "object";
+              const displayText = isObj
+                ? `${item.codigo} - ${item.descricao}`
+                : item;
+              const valueToSave = isObj ? item.codigo : item;
+
+              return (
+                <li
+                  key={i}
+                  // onMouseDown previne que o onBlur do input feche o menu antes do clique registrar
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onChange(valueToSave);
+                    setIsOpen(false);
+                  }}
+                  className="p-2 hover:bg-blue-50 cursor-pointer text-gray-700 truncate"
+                  title={displayText}
+                >
+                  {isObj ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-mono font-bold text-blue-700">
+                        {item.codigo}
+                      </span>
+                      <span className="text-gray-500 line-clamp-1">
+                        {item.descricao}
+                      </span>
+                    </div>
+                  ) : (
+                    item
+                  )}
+                </li>
+              );
+            })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function ProductRow({
   produto,
   isSelected,
@@ -55,13 +163,12 @@ export default function ProductRow({
 
       const data = await res.json();
 
-      // Atualiza o formulário com os dados encontrados
       setEditData((prev) => ({
         ...prev,
         ncm: data.ncm ? data.ncm.replace(/\D/g, "") : prev.ncm,
-        descricao: data.nome || prev.descricao, // Opcional: preenche o nome
-        marca: data.marca || prev.marca, // Opcional: preenche a marca
-        categoria: data.categoria || prev.categoria, // Opcional
+        descricao: data.nome || prev.descricao,
+        marca: data.marca || prev.marca,
+        categoria: data.categoria || prev.categoria,
       }));
     } catch {
       alert("Erro de conexão ao consultar o Código de Barras.");
@@ -272,17 +379,15 @@ export default function ProductRow({
             />
           </td>
 
-          {/* NCM COM BUSCA FUZZY */}
+          {/* NCM COM AUTOSUGGEST + LUPA (BUSCA FUZZY) */}
           <td className="p-2">
             <div className="flex items-center gap-1">
-              <input
+              <AutocompleteInput
+                type="ncm"
                 className="w-full p-1.5 border rounded text-xs font-mono outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                 value={editData.ncm || ""}
-                onChange={(e) =>
-                  setEditData({
-                    ...editData,
-                    ncm: e.target.value.replace(/\D/g, ""),
-                  })
+                onChange={(val) =>
+                  setEditData({ ...editData, ncm: val.replace(/\D/g, "") })
                 }
                 placeholder="33051000"
               />
@@ -311,33 +416,38 @@ export default function ProductRow({
             </div>
           </td>
 
+          {/* MARCA COM AUTOSUGGEST */}
           <td className="p-2">
-            <input
+            <AutocompleteInput
+              type="marca"
               className="w-full p-1.5 border rounded text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
               value={editData.marca || ""}
-              onChange={(e) =>
-                setEditData({ ...editData, marca: e.target.value })
-              }
+              onChange={(val) => setEditData({ ...editData, marca: val })}
             />
           </td>
+
+          {/* CATEGORIA COM AUTOSUGGEST */}
           <td className="p-2">
-            <input
+            <AutocompleteInput
+              type="categoria"
               className="w-full p-1.5 border rounded text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
               value={editData.categoria || ""}
-              onChange={(e) =>
-                setEditData({ ...editData, categoria: e.target.value })
-              }
+              onChange={(val) => setEditData({ ...editData, categoria: val })}
             />
           </td>
+
+          {/* SUBCATEGORIA COM AUTOSUGGEST */}
           <td className="p-2">
-            <input
+            <AutocompleteInput
+              type="subcategoria"
               className="w-full p-1.5 border rounded text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
               value={editData.subcategoria || ""}
-              onChange={(e) =>
-                setEditData({ ...editData, subcategoria: e.target.value })
+              onChange={(val) =>
+                setEditData({ ...editData, subcategoria: val })
               }
             />
           </td>
+
           <td className="p-2 text-center">
             <div className="flex justify-center gap-2 flex-wrap">
               <button
@@ -357,7 +467,7 @@ export default function ProductRow({
           </td>
         </tr>
 
-        {/* DROPDOWN DE BUSCA NCM */}
+        {/* DROPDOWN DE BUSCA NCM (FUZZY POR DESCRIÇÃO) */}
         {ncmSearchOpen && (
           <tr>
             <td colSpan={8} className="p-0">
