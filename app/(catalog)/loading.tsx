@@ -1,3 +1,4 @@
+// app/(catalog)/loading.tsx
 export default function CatalogoLoading() {
   return (
     <main className="min-h-screen bg-slate-100 p-4">

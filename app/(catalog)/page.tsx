@@ -27,7 +27,7 @@ export default async function CatalogoPage({
   const termoBusca = resolvedParams.q;
   const sortParam = resolvedParams.sort;
   const page = parseInt(resolvedParams.page || "1");
-  const pageSize = 200;
+  const pageSize = 50;
 
   const conditions: Prisma.ProdutoGlobalWhereInput[] = [];
 
@@ -163,10 +163,7 @@ export default async function CatalogoPage({
       />
 
       <section className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col min-h-0 overflow-hidden">
-        <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-col sm:flex-row justify-between items-center px-4 gap-2 shrink-0">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:block">
-            Navegação Superior
-          </span>
+        <div className="px-4 py-2 flex justify-between items-center shrink-0">
           <PaginationControls currentPage={page} totalPages={totalPages} />
         </div>
 
@@ -178,7 +175,7 @@ export default async function CatalogoPage({
           currentSort={sortParam}
         />
 
-        <div className="bg-slate-50 border-t border-slate-200 p-2 flex justify-center sm:justify-end shrink-0">
+        <div className="px-4 py-2 flex justify-center sm:justify-end shrink-0 border-t border-slate-100">
           <PaginationControls currentPage={page} totalPages={totalPages} />
         </div>
       </section>
