@@ -84,7 +84,6 @@ export default function CatalogFilters({
     router.push(`/?${params.toString()}`);
   };
 
-  // Quando categoria muda, limpa a subcategoria
   const handleCategoriaChange = (value: string | null) => {
     const params = new URLSearchParams(searchParams.toString());
     if (value) {
@@ -145,7 +144,7 @@ export default function CatalogFilters({
   const hasFilters = activeFilters.length > 0;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden shrink-0">
       <div className="p-3 flex flex-wrap items-end gap-3">
         {/* BUSCA */}
         <form onSubmit={handleSearch} className="flex gap-1.5 min-w-50 flex-2">

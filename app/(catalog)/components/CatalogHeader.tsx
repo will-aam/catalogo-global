@@ -4,7 +4,7 @@ import PDFUploadButton from "./import/PDFUploadButton";
 
 export default function CatalogHeader({ totalItens }: { totalItens: number }) {
   return (
-    <header className="relative z-50 bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 lg:gap-6">
+    <header className="relative z-50 bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 lg:gap-6 shrink-0">
       {/* Título */}
       <div className="w-full lg:w-auto flex items-center justify-between shrink-0">
         <div>

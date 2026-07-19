@@ -1,4 +1,4 @@
-// app/(catolog)/page.tsx
+// app/(catalog)/page.tsx
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import CatalogHeader from "./components/CatalogHeader";
@@ -28,9 +28,6 @@ export default async function CatalogoPage({
   const sortParam = resolvedParams.sort;
   const page = parseInt(resolvedParams.page || "1");
   const pageSize = 200;
-
-  // TODO: remover após testar o loading.tsx
-  await new Promise((r) => setTimeout(r, 3000));
 
   const conditions: Prisma.ProdutoGlobalWhereInput[] = [];
 
@@ -150,38 +147,47 @@ export default async function CatalogoPage({
   }));
 
   return (
-    <main className="min-h-screen bg-slate-100 p-4 relative">
-      <div className="max-w-[98vw] mx-auto flex flex-col gap-4">
-        <CatalogHeader totalItens={totalItens} />
+    <main
+      style={{
+        height: "100%",
+        display: "grid",
+        gridTemplateRows: "auto auto 1fr",
+        gap: "0.75rem",
+      }}
+      className="bg-slate-100 p-4 relative"
+    >
+      <CatalogHeader totalItens={totalItens} />
 
-        <CatalogFilters
-          key={JSON.stringify(resolvedParams)}
-          categorias={categoriasOptions}
-          marcas={marcasOptions}
-          subcategorias={subcategoriasOptions}
+      <CatalogFilters
+        key={JSON.stringify(resolvedParams)}
+        categorias={categoriasOptions}
+        marcas={marcasOptions}
+        subcategorias={subcategoriasOptions}
+      />
+
+      <section
+        style={{ minHeight: 0, overflow: "hidden" }}
+        className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col"
+      >
+        <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-col sm:flex-row justify-between items-center px-4 gap-2 shrink-0">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:block">
+            Navegação Superior
+          </span>
+          <PaginationControls currentPage={page} totalPages={totalPages} />
+        </div>
+
+        <ProductTable
+          produtos={produtos}
+          totalItemsEncontrados={totalItens}
+          categoriaFiltro={categoriaFiltro}
+          termoBusca={termoBusca}
+          currentSort={sortParam}
         />
 
-        <section className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-          <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-col sm:flex-row justify-between items-center px-4 gap-2">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:block">
-              Navegação Superior
-            </span>
-            <PaginationControls currentPage={page} totalPages={totalPages} />
-          </div>
-
-          <ProductTable
-            produtos={produtos}
-            totalItemsEncontrados={totalItens}
-            categoriaFiltro={categoriaFiltro}
-            termoBusca={termoBusca}
-            currentSort={sortParam}
-          />
-
-          <div className="bg-slate-50 border-t border-slate-200 p-2 flex justify-center sm:justify-end">
-            <PaginationControls currentPage={page} totalPages={totalPages} />
-          </div>
-        </section>
-      </div>
+        <div className="bg-slate-50 border-t border-slate-200 p-2 flex justify-center sm:justify-end shrink-0">
+          <PaginationControls currentPage={page} totalPages={totalPages} />
+        </div>
+      </section>
     </main>
   );
 }

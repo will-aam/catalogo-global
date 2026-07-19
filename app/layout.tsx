@@ -29,9 +29,25 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body
+        style={{
+          height: "100vh",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         <Sidebar />
-        <main className="pl-14 flex-1">{children}</main>
+        <main
+          style={{
+            paddingLeft: "3.5rem",
+            flex: "1 1 0%",
+            minHeight: 0,
+            overflow: "hidden",
+          }}
+        >
+          {children}
+        </main>
       </body>
     </html>
   );

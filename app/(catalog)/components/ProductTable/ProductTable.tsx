@@ -162,9 +162,9 @@ export default function ProductTable({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border overflow-hidden flex-1 relative flex flex-col">
+    <div className="bg-white rounded-xl shadow-sm border overflow-hidden flex-1 min-h-0 flex flex-col">
       {/* Barra de Ações em Lote */}
-      <div className="bg-blue-600 text-white p-3 flex flex-col xl:flex-row items-center justify-between sticky top-0 z-20 shadow-md border-b border-blue-700 gap-3">
+      <div className="bg-blue-600 text-white p-3 flex flex-col xl:flex-row items-center justify-between sticky top-0 z-20 shadow-md border-b border-blue-700 gap-3 shrink-0">
         {selectedIds.size > 0 ? (
           <div className="flex flex-col">
             <span className="font-semibold text-sm">
@@ -308,7 +308,7 @@ export default function ProductTable({
         </div>
       </div>
 
-      <div className="overflow-auto max-h-[75vh]">
+      <div className="overflow-auto flex-1 min-h-0">
         <table className="w-full text-left text-sm table-fixed min-w-250 relative">
           <thead className="bg-gray-100 border-b border-gray-200 text-gray-600 sticky top-0 z-10 shadow-sm">
             <tr>
