@@ -1,3 +1,4 @@
+// app/(catalog)/components/import/XMLUploadButton.tsx
 "use client";
 
 import { useState, useRef } from "react";
@@ -5,10 +6,18 @@ import { useRouter } from "next/navigation";
 
 type FeedbackType = "success" | "error";
 
+type ImportStats = {
+  notasLidas: number;
+  novos: number;
+  ncmAtualizados: number;
+  marcaAtualizada: number;
+};
+
 type FeedbackState = {
   type: FeedbackType;
   title: string;
   message: string;
+  stats?: ImportStats;
 } | null;
 
 export default function XMLUploadButton() {
@@ -19,8 +28,13 @@ export default function XMLUploadButton() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  const showFeedback = (type: FeedbackType, title: string, message: string) => {
-    setFeedback({ type, title, message });
+  const showFeedback = (
+    type: FeedbackType,
+    title: string,
+    message: string,
+    stats?: ImportStats,
+  ) => {
+    setFeedback({ type, title, message, stats });
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -43,8 +57,11 @@ export default function XMLUploadButton() {
     setIsUploading(true);
     setProgress({ current: 0, total: xmlFiles.length });
 
-    let totalCriados = 0;
-    let totalAtualizados = 0;
+    // Contadores agregados de todos os lotes
+    let totalNovos = 0;
+    let totalNcmAtualizados = 0;
+    let totalMarcaAtualizada = 0;
+    let houveErroEmAlgumLote = false;
     const BATCH_SIZE = 50;
 
     try {
@@ -66,9 +83,11 @@ export default function XMLUploadButton() {
         const data = await res.json();
 
         if (res.ok) {
-          totalCriados += data.criados || 0;
-          totalAtualizados += data.atualizados || 0;
+          totalNovos += data.criados || 0;
+          totalNcmAtualizados += data.ncmAtualizados || 0;
+          totalMarcaAtualizada += data.marcaAtualizada || 0;
         } else {
+          houveErroEmAlgumLote = true;
           console.error(`Erro no lote ${i}:`, data.error);
         }
 
@@ -78,10 +97,22 @@ export default function XMLUploadButton() {
         });
       }
 
+      const stats: ImportStats = {
+        notasLidas: xmlFiles.length,
+        novos: totalNovos,
+        ncmAtualizados: totalNcmAtualizados,
+        marcaAtualizada: totalMarcaAtualizada,
+      };
+
       showFeedback(
-        "success",
-        "Importação em Lote Concluída",
-        `Notas lidas: ${xmlFiles.length}\nNovos produtos inseridos: ${totalCriados}\nProdutos atualizados com NCM/Marca: ${totalAtualizados}`,
+        houveErroEmAlgumLote ? "error" : "success",
+        houveErroEmAlgumLote
+          ? "Importação Concluída com Falhas"
+          : "Importação em Lote Concluída",
+        houveErroEmAlgumLote
+          ? "Alguns lotes falharam durante o envio. Confira o console para detalhes."
+          : "Confira abaixo o resumo do que foi feito nesta importação.",
+        stats,
       );
       router.refresh();
     } catch (error) {
@@ -102,9 +133,7 @@ export default function XMLUploadButton() {
   };
 
   return (
-    // Transformei de flex-row para flex-col, ocupando 100% da largura (w-full)
     <div className="flex flex-col w-full gap-2 bg-orange-50/50 p-2 border border-orange-100 rounded-lg">
-      {/* Campo para a Marca (Agora ocupa 100% do espaço) */}
       <input
         type="text"
         placeholder="Definir Marca (opcional)"
@@ -124,7 +153,6 @@ export default function XMLUploadButton() {
         ref={fileInputRef}
       />
 
-      {/* Botão (Agora ocupa 100% do espaço) */}
       <button
         onClick={() => fileInputRef.current?.click()}
         disabled={isUploading}
@@ -139,7 +167,6 @@ export default function XMLUploadButton() {
       {/* MODAL DE FEEDBACK (substitui alert()) — só fecha pelo X ou botão OK */}
       {feedback && (
         <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
-          {/* Backdrop SEM onClick — clicar fora não fecha */}
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div
@@ -208,10 +235,40 @@ export default function XMLUploadButton() {
               <h3 className="text-lg font-bold text-white">{feedback.title}</h3>
             </div>
 
-            <div className="p-5 text-center">
-              <p className="text-sm text-slate-600 font-medium whitespace-pre-line">
+            <div className="p-5">
+              <p className="text-sm text-slate-600 font-medium whitespace-pre-line text-center mb-3">
                 {feedback.message}
               </p>
+
+              {/* Resumo detalhado da importação */}
+              {feedback.stats && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl divide-y divide-slate-200 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                    <span className="text-slate-500">Notas lidas</span>
+                    <span className="font-bold text-slate-700">
+                      {feedback.stats.notasLidas}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                    <span className="text-slate-500">Produtos novos</span>
+                    <span className="font-bold text-blue-600">
+                      {feedback.stats.novos}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                    <span className="text-slate-500">NCMs corrigidos</span>
+                    <span className="font-bold text-orange-600">
+                      {feedback.stats.ncmAtualizados}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                    <span className="text-slate-500">Marcas preenchidas</span>
+                    <span className="font-bold text-purple-600">
+                      {feedback.stats.marcaAtualizada}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="px-5 pb-5">
