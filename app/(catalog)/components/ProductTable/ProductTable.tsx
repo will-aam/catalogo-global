@@ -8,6 +8,14 @@ import { useRouter } from "next/navigation";
 import NCMReplaceModal from "../NCMReplace/NCMReplaceModal";
 import type { BulkPayload } from "@/app/(catalog)/types";
 
+type FeedbackType = "success" | "error";
+
+type FeedbackState = {
+  type: FeedbackType;
+  title: string;
+  message: string;
+} | null;
+
 export default function ProductTable({
   produtos,
   totalItemsEncontrados,
@@ -29,7 +37,13 @@ export default function ProductTable({
   const [isDeletingBulk, setIsDeletingBulk] = useState(false);
   const [selectAllPages, setSelectAllPages] = useState(false);
   const [isReplaceModalOpen, setIsReplaceModalOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
   const router = useRouter();
+
+  const showFeedback = (type: FeedbackType, title: string, message: string) => {
+    setFeedback({ type, title, message });
+  };
 
   const allOnPageSelected =
     produtos.length > 0 && selectedIds.size === produtos.length;
@@ -64,13 +78,7 @@ export default function ProductTable({
   };
 
   const handleBulkDelete = async () => {
-    const count = selectAllPages ? totalItemsEncontrados : selectedIds.size;
-    const confirmMessage = `Tem certeza que deseja EXCLUIR ${count} produto(s)? Esta ação não pode ser desfeita.`;
-
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
-
+    setShowDeleteConfirm(false);
     setIsDeletingBulk(true);
     try {
       const payload: Omit<BulkPayload, "categoria" | "marca"> = {};
@@ -94,12 +102,24 @@ export default function ProductTable({
         setSelectedIds(new Set());
         setSelectAllPages(false);
         router.refresh();
-        alert("Produtos excluídos com sucesso!");
+        showFeedback(
+          "success",
+          "Exclusão Concluída",
+          "Produtos excluídos com sucesso!",
+        );
       } else {
-        alert("Erro ao excluir. Verifique a conexão.");
+        showFeedback(
+          "error",
+          "Erro ao Excluir",
+          "Não foi possível excluir. Verifique a conexão.",
+        );
       }
     } catch {
-      alert("Erro ao processar a exclusão em lote");
+      showFeedback(
+        "error",
+        "Erro ao Excluir",
+        "Ocorreu um erro ao processar a exclusão em lote.",
+      );
     } finally {
       setIsDeletingBulk(false);
     }
@@ -107,9 +127,12 @@ export default function ProductTable({
 
   const handleBulkUpdate = async () => {
     if (!bulkCategory && !bulkMarca && !bulkSubcategoria) {
-      return alert(
+      showFeedback(
+        "error",
+        "Campos Vazios",
         "Digite uma Categoria, Marca ou Subcategoria para atualizar!",
       );
+      return;
     }
 
     setIsSavingBulk(true);
@@ -140,12 +163,26 @@ export default function ProductTable({
         setSelectAllPages(false);
         setBulkCategory("");
         setBulkMarca("");
+        setBulkSubcategoria("");
         router.refresh();
+        showFeedback(
+          "success",
+          "Atualização Concluída",
+          "Produtos atualizados com sucesso!",
+        );
       } else {
-        alert("Erro ao atualizar. Verifique a conexão.");
+        showFeedback(
+          "error",
+          "Erro ao Atualizar",
+          "Não foi possível atualizar. Verifique a conexão.",
+        );
       }
     } catch {
-      alert("Erro ao processar a requisição em lote");
+      showFeedback(
+        "error",
+        "Erro ao Atualizar",
+        "Ocorreu um erro ao processar a requisição em lote.",
+      );
     } finally {
       setIsSavingBulk(false);
     }
@@ -161,6 +198,8 @@ export default function ProductTable({
     params.set("page", "1");
     router.push(`/?${params.toString()}`);
   };
+
+  const deleteCount = selectAllPages ? totalItemsEncontrados : selectedIds.size;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border overflow-hidden flex-1 min-h-0 flex flex-col">
@@ -276,7 +315,7 @@ export default function ProductTable({
           {selectedIds.size > 0 && (
             <>
               <button
-                onClick={handleBulkDelete}
+                onClick={() => setShowDeleteConfirm(true)}
                 disabled={isDeletingBulk || isSavingBulk}
                 className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-md text-sm font-bold transition-colors shadow-sm disabled:opacity-50 ml-2"
               >
@@ -387,6 +426,200 @@ export default function ProductTable({
         isOpen={isReplaceModalOpen}
         onClose={() => setIsReplaceModalOpen(false)}
       />
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO EM LOTE */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-linear-to-r from-red-500 to-red-600 p-5 text-center relative">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="absolute top-3 right-3 p-1 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                title="Fechar"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+
+              <div className="mx-auto w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mb-3">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-white"
+                >
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-white">Excluir Produtos</h3>
+            </div>
+
+            <div className="p-5 text-center space-y-3">
+              <p className="text-sm text-slate-600 font-medium">
+                Tem certeza que deseja excluir{" "}
+                <span className="font-bold text-slate-800">{deleteCount}</span>{" "}
+                produto(s)?
+              </p>
+              <p className="text-xs text-red-500 font-semibold">
+                Esta ação não pode ser desfeita.
+              </p>
+            </div>
+
+            <div className="px-5 pb-5 flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeletingBulk}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={isDeletingBulk}
+                className="flex-1 px-4 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isDeletingBulk ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        fill="none"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    Excluindo...
+                  </>
+                ) : (
+                  "Sim, Excluir"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE FEEDBACK (substitui alert()) — só fecha pelo X ou botão OK */}
+      {feedback && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div
+              className={`p-5 text-center relative ${
+                feedback.type === "success"
+                  ? "bg-linear-to-r from-green-500 to-green-600"
+                  : "bg-linear-to-r from-red-500 to-red-600"
+              }`}
+            >
+              <button
+                onClick={() => setFeedback(null)}
+                className="absolute top-3 right-3 p-1 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                title="Fechar"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+
+              <div className="mx-auto w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mb-3">
+                {feedback.type === "success" ? (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-white"
+                  >
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                ) : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-white"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                )}
+              </div>
+              <h3 className="text-lg font-bold text-white">{feedback.title}</h3>
+            </div>
+
+            <div className="p-5 text-center">
+              <p className="text-sm text-slate-600 font-medium whitespace-pre-line">
+                {feedback.message}
+              </p>
+            </div>
+
+            <div className="px-5 pb-5">
+              <button
+                onClick={() => setFeedback(null)}
+                className={`w-full px-4 py-2.5 text-sm font-bold text-white rounded-xl transition-colors ${
+                  feedback.type === "success"
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "bg-red-600 hover:bg-red-700"
+                }`}
+              >
+                Entendi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

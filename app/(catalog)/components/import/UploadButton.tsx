@@ -8,10 +8,23 @@ import {
   TEMPLATE_SAMPLE_ROW,
 } from "@/app/(catalog)/constants";
 
+type FeedbackType = "success" | "error";
+
+type FeedbackState = {
+  type: FeedbackType;
+  title: string;
+  message: string;
+} | null;
+
 export default function UploadButton() {
   const [isUploading, setIsUploading] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+
+  const showFeedback = (type: FeedbackType, title: string, message: string) => {
+    setFeedback({ type, title, message });
+  };
 
   const handleFileChange = async (
     event: React.ChangeEvent<HTMLInputElement>,
@@ -37,18 +50,26 @@ export default function UploadButton() {
         const atualizados = result.atualizados ?? 0;
         const total = result.total_processado ?? criados + atualizados;
 
-        alert(
-          `Sucesso! ${total} produtos processados.\n` +
-            `• Criados: ${criados}\n` +
-            `• Atualizados: ${atualizados}`,
+        showFeedback(
+          "success",
+          "Importação Concluída",
+          `${total} produtos processados.\n• Criados: ${criados}\n• Atualizados: ${atualizados}`,
         );
         router.refresh();
       } else {
-        alert(`Erro: ${result.error ?? "Falha ao importar arquivo."}`);
+        showFeedback(
+          "error",
+          "Erro na Importação",
+          result.error ?? "Falha ao importar arquivo.",
+        );
       }
     } catch (error) {
       console.error(error);
-      alert("Erro ao enviar o arquivo.");
+      showFeedback(
+        "error",
+        "Erro de Ligação",
+        "Não foi possível enviar o arquivo. Verifique a sua conexão.",
+      );
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -114,6 +135,100 @@ export default function UploadButton() {
           <line x1="12" x2="12" y1="15" y2="3" />
         </svg>
       </button>
+
+      {/* MODAL DE FEEDBACK (substitui alert()) — só fecha pelo X ou botão OK */}
+      {feedback && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+          {/* Backdrop SEM onClick — clicar fora não fecha */}
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div
+              className={`p-5 text-center relative ${
+                feedback.type === "success"
+                  ? "bg-linear-to-r from-green-500 to-green-600"
+                  : "bg-linear-to-r from-red-500 to-red-600"
+              }`}
+            >
+              <button
+                onClick={() => setFeedback(null)}
+                className="absolute top-3 right-3 p-1 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                title="Fechar"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+
+              <div className="mx-auto w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mb-3">
+                {feedback.type === "success" ? (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-white"
+                  >
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                ) : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-white"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                )}
+              </div>
+              <h3 className="text-lg font-bold text-white">{feedback.title}</h3>
+            </div>
+
+            <div className="p-5 text-center">
+              <p className="text-sm text-slate-600 font-medium whitespace-pre-line">
+                {feedback.message}
+              </p>
+            </div>
+
+            <div className="px-5 pb-5">
+              <button
+                onClick={() => setFeedback(null)}
+                className={`w-full px-4 py-2.5 text-sm font-bold text-white rounded-xl transition-colors ${
+                  feedback.type === "success"
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "bg-red-600 hover:bg-red-700"
+                }`}
+              >
+                Entendi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

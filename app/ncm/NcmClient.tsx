@@ -9,6 +9,14 @@ type NCMItem = {
   descricao: string;
 };
 
+type FeedbackType = "success" | "error";
+
+type FeedbackState = {
+  type: FeedbackType;
+  title: string;
+  message: string;
+} | null;
+
 export default function NcmClient({
   items,
   total,
@@ -25,9 +33,15 @@ export default function NcmClient({
   const router = useRouter();
   const [search, setSearch] = useState(q);
   const [importing, setImporting] = useState(false);
-  const [importMsg, setImportMsg] = useState<string | null>(null);
   const [importProgress, setImportProgress] = useState("");
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const showFeedback = (type: FeedbackType, title: string, message: string) => {
+    setFeedback({ type, title, message });
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +53,6 @@ export default function NcmClient({
     if (!file) return;
 
     setImporting(true);
-    setImportMsg(null);
     setImportProgress("Lendo arquivo...");
 
     try {
@@ -54,7 +67,11 @@ export default function NcmClient({
         if (arrayKey) {
           data = data[arrayKey];
         } else {
-          setImportMsg("Formato não reconhecido. Envie um array JSON.");
+          showFeedback(
+            "error",
+            "Formato Inválido",
+            "Formato não reconhecido. Envie um array JSON.",
+          );
           return;
         }
       }
@@ -97,7 +114,11 @@ export default function NcmClient({
         .filter(Boolean) as { codigo: string; descricao: string }[];
 
       if (normalized.length === 0) {
-        setImportMsg("Nenhum NCM válido encontrado no arquivo.");
+        showFeedback(
+          "error",
+          "Nenhum Registro Válido",
+          "Nenhum NCM válido encontrado no arquivo.",
+        );
         return;
       }
 
@@ -112,32 +133,55 @@ export default function NcmClient({
       const result = await res.json();
 
       if (res.ok) {
-        setImportMsg(
+        showFeedback(
+          "success",
+          "Importação Concluída",
           `Importados ${result.imported} de ${normalized.length} NCMs com sucesso!`,
         );
-        setImportProgress("");
         router.refresh();
       } else {
-        setImportMsg(`Erro: ${result.error}`);
-        setImportProgress("");
+        showFeedback("error", "Erro na Importação", String(result.error));
       }
     } catch {
-      setImportMsg(
+      showFeedback(
+        "error",
+        "Erro no Arquivo",
         "Erro ao processar o arquivo. Verifique se é um JSON válido.",
       );
-      setImportProgress("");
     } finally {
       setImporting(false);
+      setImportProgress("");
       if (fileRef.current) fileRef.current.value = "";
     }
   };
 
   const handleClear = async () => {
-    if (!window.confirm("Remover todos os NCMs importados?")) return;
-
-    const res = await fetch("/api/ncm", { method: "DELETE" });
-    if (res.ok) {
-      router.refresh();
+    setIsClearing(true);
+    try {
+      const res = await fetch("/api/ncm", { method: "DELETE" });
+      setShowClearConfirm(false);
+      if (res.ok) {
+        router.refresh();
+        showFeedback(
+          "success",
+          "Tabela Limpa",
+          "Todos os NCMs importados foram removidos.",
+        );
+      } else {
+        showFeedback(
+          "error",
+          "Erro ao Limpar",
+          "Não foi possível remover os NCMs importados.",
+        );
+      }
+    } catch {
+      showFeedback(
+        "error",
+        "Erro de Ligação",
+        "Ocorreu um erro de conexão ao tentar limpar a tabela.",
+      );
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -201,7 +245,7 @@ export default function NcmClient({
 
           {total > 0 && (
             <button
-              onClick={handleClear}
+              onClick={() => setShowClearConfirm(true)}
               className="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors"
             >
               Limpar
@@ -218,19 +262,7 @@ export default function NcmClient({
         </div>
       </div>
 
-      {/* MENSAGENS */}
-      {importMsg && (
-        <div
-          className={`px-4 py-3 rounded-xl text-sm font-medium ${
-            importMsg.includes("Erro") || importMsg.includes("Nenhum")
-              ? "bg-red-50 text-red-700 border border-red-200"
-              : "bg-green-50 text-green-700 border border-green-200"
-          }`}
-        >
-          {importMsg}
-        </div>
-      )}
-
+      {/* PROGRESSO (apenas indicador, não é alerta) */}
       {importProgress && (
         <div className="px-4 py-3 rounded-xl text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">
           {importProgress}
@@ -335,6 +367,200 @@ export default function NcmClient({
             >
               Próximo
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE LIMPEZA */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-linear-to-r from-red-500 to-red-600 p-5 text-center relative">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="absolute top-3 right-3 p-1 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                title="Fechar"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+
+              <div className="mx-auto w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mb-3">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-white"
+                >
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-white">
+                Limpar Tabela NCM
+              </h3>
+            </div>
+
+            <div className="p-5 text-center space-y-3">
+              <p className="text-sm text-slate-600 font-medium">
+                Tem certeza que deseja remover todos os NCMs importados?
+              </p>
+              <p className="text-xs text-red-500 font-semibold">
+                Esta ação não pode ser desfeita.
+              </p>
+            </div>
+
+            <div className="px-5 pb-5 flex gap-3">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                disabled={isClearing}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleClear}
+                disabled={isClearing}
+                className="flex-1 px-4 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isClearing ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        fill="none"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    Limpando...
+                  </>
+                ) : (
+                  "Sim, Limpar"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE FEEDBACK — só fecha pelo X ou botão OK */}
+      {feedback && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div
+              className={`p-5 text-center relative ${
+                feedback.type === "success"
+                  ? "bg-linear-to-r from-green-500 to-green-600"
+                  : "bg-linear-to-r from-red-500 to-red-600"
+              }`}
+            >
+              <button
+                onClick={() => setFeedback(null)}
+                className="absolute top-3 right-3 p-1 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                title="Fechar"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+
+              <div className="mx-auto w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mb-3">
+                {feedback.type === "success" ? (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-white"
+                  >
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                ) : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-white"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                )}
+              </div>
+              <h3 className="text-lg font-bold text-white">{feedback.title}</h3>
+            </div>
+
+            <div className="p-5 text-center">
+              <p className="text-sm text-slate-600 font-medium whitespace-pre-line">
+                {feedback.message}
+              </p>
+            </div>
+
+            <div className="px-5 pb-5">
+              <button
+                onClick={() => setFeedback(null)}
+                className={`w-full px-4 py-2.5 text-sm font-bold text-white rounded-xl transition-colors ${
+                  feedback.type === "success"
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "bg-red-600 hover:bg-red-700"
+                }`}
+              >
+                Entendi
+              </button>
+            </div>
           </div>
         </div>
       )}

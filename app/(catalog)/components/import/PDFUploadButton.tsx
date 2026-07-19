@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 
 import type { ProdutoExtraido } from "@/app/(catalog)/types";
 
+type FeedbackType = "success" | "error";
+
+type FeedbackState = {
+  type: FeedbackType;
+  title: string;
+  message: string;
+} | null;
+
 export default function PDFUploadButton() {
   const [isExtracting, setIsExtracting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -15,15 +23,26 @@ export default function PDFUploadButton() {
   const [bulkMarca, setBulkMarca] = useState("");
   const [bulkNcm, setBulkNcm] = useState("");
 
+  // Modal de feedback (substitui os alerts do navegador)
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+
+  const showFeedback = (type: FeedbackType, title: string, message: string) => {
+    setFeedback({ type, title, message });
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.name.toLowerCase().endsWith(".pdf")) {
-      alert("Por favor, selecione um ficheiro PDF válido.");
+      showFeedback(
+        "error",
+        "Arquivo Inválido",
+        "Por favor, selecione um ficheiro PDF válido.",
+      );
       return;
     }
 
@@ -43,11 +62,19 @@ export default function PDFUploadButton() {
         setProdutosTriagem(data.produtos);
         setShowModal(true); // Abre o ecrã de triagem
       } else {
-        alert(`Erro: ${data.error || "Falha ao extrair dados do PDF"}`);
+        showFeedback(
+          "error",
+          "Falha na Extração",
+          data.error || "Falha ao extrair dados do PDF",
+        );
       }
     } catch (error) {
       console.error(error);
-      alert("Erro de ligação ao enviar o PDF.");
+      showFeedback(
+        "error",
+        "Erro de Ligação",
+        "Não foi possível enviar o PDF. Verifique a sua conexão.",
+      );
     } finally {
       setIsExtracting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -62,7 +89,11 @@ export default function PDFUploadButton() {
       ncm: bulkNcm || p.ncm,
     }));
     setProdutosTriagem(atualizados);
-    alert("Marca/NCM aplicados à lista com sucesso!");
+    showFeedback(
+      "success",
+      "Aplicado com Sucesso",
+      "Marca/NCM aplicados a todos os itens da lista!",
+    );
   };
 
   const handleRemoveItem = (index: number) => {
@@ -85,20 +116,30 @@ export default function PDFUploadButton() {
       const data = await res.json();
 
       if (res.ok) {
-        alert(
-          `Sucesso!\nNovos: ${data.criados}\nAtualizados: ${data.atualizados}`,
-        );
         setShowModal(false);
         setProdutosTriagem([]);
         setBulkMarca("");
         setBulkNcm("");
         router.refresh();
+        showFeedback(
+          "success",
+          "Importação Concluída",
+          `Novos produtos: ${data.criados}\nAtualizados: ${data.atualizados}`,
+        );
       } else {
-        alert("Erro ao guardar os produtos na base de dados.");
+        showFeedback(
+          "error",
+          "Erro ao Guardar",
+          "Não foi possível guardar os produtos na base de dados.",
+        );
       }
     } catch (error) {
       console.error(error);
-      alert("Erro de ligação ao guardar.");
+      showFeedback(
+        "error",
+        "Erro de Ligação",
+        "Ocorreu um erro de conexão ao guardar os dados.",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -271,6 +312,100 @@ export default function PDFUploadButton() {
                 {isSaving
                   ? "A Guardar..."
                   : `Guardar ${produtosTriagem.length} Produtos`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE FEEDBACK (substitui alert()) — só fecha pelo X ou botão OK */}
+      {feedback && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+          {/* Backdrop SEM onClick — clicar fora não fecha */}
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div
+              className={`p-5 text-center relative ${
+                feedback.type === "success"
+                  ? "bg-linear-to-r from-green-500 to-green-600"
+                  : "bg-linear-to-r from-red-500 to-red-600"
+              }`}
+            >
+              <button
+                onClick={() => setFeedback(null)}
+                className="absolute top-3 right-3 p-1 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                title="Fechar"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+
+              <div className="mx-auto w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mb-3">
+                {feedback.type === "success" ? (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-white"
+                  >
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                ) : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-white"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                )}
+              </div>
+              <h3 className="text-lg font-bold text-white">{feedback.title}</h3>
+            </div>
+
+            <div className="p-5 text-center">
+              <p className="text-sm text-slate-600 font-medium whitespace-pre-line">
+                {feedback.message}
+              </p>
+            </div>
+
+            <div className="px-5 pb-5">
+              <button
+                onClick={() => setFeedback(null)}
+                className={`w-full px-4 py-2.5 text-sm font-bold text-white rounded-xl transition-colors ${
+                  feedback.type === "success"
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "bg-red-600 hover:bg-red-700"
+                }`}
+              >
+                Entendi
               </button>
             </div>
           </div>
