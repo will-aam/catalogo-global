@@ -206,7 +206,7 @@ export default function ProductTable({
             Substituir NCM
           </button>
 
-          {/* MENU DROPDOWN DE EXPORTAÇÃO */}
+          {/* MENU DROPDOWN DE EXPORTAÇÃO (hover, sem gap morto) */}
           <div className="relative inline-block text-left group">
             <button className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors shadow-sm flex items-center gap-1.5">
               <svg
@@ -226,40 +226,49 @@ export default function ProductTable({
               </svg>
               Exportar
             </button>
-            <div className="absolute right-0 mt-1 w-52 bg-white border border-gray-200 rounded-md shadow-lg hidden group-hover:block hover:block z-30 divide-y divide-gray-100">
-              <div className="py-1">
-                <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  Filtros Atuais da Tela
+
+            {/*
+              Wrapper sem margem: usa `top-full` + `pt-2` para criar uma
+              "ponte" de hover contínua entre o botão e o menu (sem espaço
+              morto no meio), evitando que o dropdown feche antes do mouse
+              alcançar as opções.
+            */}
+            <div className="absolute right-0 top-full pt-2 w-52 hidden group-hover:block hover:block z-30">
+              <div className="bg-white border border-gray-200 rounded-md shadow-lg divide-y divide-gray-100">
+                <div className="py-1">
+                  <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Filtros Atuais da Tela
+                  </div>
+                  <button
+                    onClick={() => handleExport("csv", false)}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                  >
+                    📄 Baixar em CSV
+                  </button>
+                  <button
+                    onClick={() => handleExport("xlsx", false)}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                  >
+                    📊 Baixar em Excel (.xlsx)
+                  </button>
                 </div>
-                <button
-                  onClick={() => handleExport("csv", false)}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                >
-                  📄 Baixar em CSV
-                </button>
-                <button
-                  onClick={() => handleExport("xlsx", false)}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                >
-                  📊 Baixar em Excel (.xlsx)
-                </button>
-              </div>
-              <div className="py-1">
-                <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  Banco Completo
+                <div className="py-1">
+                  <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Banco Completo
+                  </div>
+                  <button
+                    onClick={() => handleExport("csv", true)}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                  >
+                    📄 Baixar Base Inteira (CSV)
+                  </button>
+                  <button
+                    onClick={() => handleExport("xlsx", true)}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                  >
+                    📊 Baixar Base Inteira (XLSX)
+                  </button>
                 </div>
-                <button
-                  onClick={() => handleExport("csv", true)}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                >
-                  📄 Baixar Base Inteira (CSV)
-                </button>
-                <button
-                  onClick={() => handleExport("xlsx", true)}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                >
-                  📊 Baixar Base Inteira (XLSX)
-                </button>
               </div>
             </div>
           </div>
