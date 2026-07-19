@@ -1,8 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f9fafb; /* Fundo cinza bem clarinho (bg-gray-50) */
-  --foreground: #111827; /* Texto escuro padrão (text-gray-900) */
+  --background: #f9fafb;
+  --foreground: #111827;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden; /* garante: sem scroll externo */
 }
 
 body {

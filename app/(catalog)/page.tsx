@@ -148,13 +148,10 @@ export default async function CatalogoPage({
 
   return (
     <main
+      className="bg-slate-100 p-4 relative h-full min-h-0 overflow-hidden grid gap-3"
       style={{
-        height: "100%",
-        display: "grid",
-        gridTemplateRows: "auto auto 1fr",
-        gap: "0.75rem",
+        gridTemplateRows: "auto auto minmax(0, 1fr)",
       }}
-      className="bg-slate-100 p-4 relative"
     >
       <CatalogHeader totalItens={totalItens} />
 
@@ -165,10 +162,7 @@ export default async function CatalogoPage({
         subcategorias={subcategoriasOptions}
       />
 
-      <section
-        style={{ minHeight: 0, overflow: "hidden" }}
-        className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col"
-      >
+      <section className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col min-h-0 overflow-hidden">
         <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-col sm:flex-row justify-between items-center px-4 gap-2 shrink-0">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:block">
             Navegação Superior

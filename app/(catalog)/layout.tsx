@@ -10,5 +10,9 @@ export default function CatalogoLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <div className="flex-1 flex flex-col">{children}</div>;
+  return (
+    <div className="h-full min-h-0 flex flex-col overflow-hidden">
+      {children}
+    </div>
+  );
 }
