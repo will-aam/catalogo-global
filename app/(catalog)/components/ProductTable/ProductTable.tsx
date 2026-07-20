@@ -39,6 +39,7 @@ export default function ProductTable({
   const [isReplaceModalOpen, setIsReplaceModalOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
+  const [bulkNcm, setBulkNcm] = useState("");
   const router = useRouter();
 
   const showFeedback = (type: FeedbackType, title: string, message: string) => {
@@ -126,13 +127,10 @@ export default function ProductTable({
   };
 
   const handleBulkUpdate = async () => {
-    if (!bulkCategory && !bulkMarca && !bulkSubcategoria) {
-      showFeedback(
-        "error",
-        "Campos Vazios",
-        "Digite uma Categoria, Marca ou Subcategoria para atualizar!",
+    if (!bulkCategory && !bulkMarca && !bulkSubcategoria && !bulkNcm) {
+      return alert(
+        "Digite uma Categoria, Marca, Subcategoria ou NCM para atualizar!",
       );
-      return;
     }
 
     setIsSavingBulk(true);
@@ -142,6 +140,8 @@ export default function ProductTable({
       if (bulkCategory) payload.categoria = bulkCategory;
       if (bulkMarca) payload.marca = bulkMarca;
       if (bulkSubcategoria) payload.subcategoria = bulkSubcategoria;
+
+      if (bulkNcm) payload.ncm = bulkNcm.replace(/\D/g, "");
 
       if (selectAllPages) {
         payload.selectAllFilters = {
@@ -164,6 +164,7 @@ export default function ProductTable({
         setBulkCategory("");
         setBulkMarca("");
         setBulkSubcategoria("");
+        setBulkNcm("");
         router.refresh();
         showFeedback(
           "success",
@@ -344,6 +345,14 @@ export default function ProductTable({
                 value={bulkSubcategoria}
                 onChange={(e) => setBulkSubcategoria(e.target.value)}
                 className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-36"
+              />
+              <input
+                type="text"
+                placeholder="Novo NCM"
+                value={bulkNcm}
+                onChange={(e) => setBulkNcm(e.target.value.replace(/\D/g, ""))}
+                maxLength={8}
+                className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-28 font-mono"
               />
               <button
                 onClick={handleBulkUpdate}

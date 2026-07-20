@@ -4,10 +4,11 @@ import { Prisma } from "@prisma/client";
 
 export async function POST(request: Request) {
   try {
-    const { ids, categoria, marca, subcategoria, selectAllFilters } =
+    const { ids, categoria, marca, subcategoria, ncm, selectAllFilters } =
       await request.json();
 
-    if (!categoria && !marca && !subcategoria) {
+    // 2. Adicionamos o '!ncm' na validação
+    if (!categoria && !marca && !subcategoria && !ncm) {
       return NextResponse.json(
         { error: "Nenhum dado para atualizar" },
         { status: 400 },
@@ -50,6 +51,9 @@ export async function POST(request: Request) {
     if (categoria) dataToUpdate.categoria = categoria.trim();
     if (marca) dataToUpdate.marca = marca.trim();
     if (subcategoria) dataToUpdate.subcategoria = subcategoria.trim();
+    if (ncm) {
+      dataToUpdate.ncm = ncm.replace(/\D/g, "");
+    }
 
     const resultado = await prisma.produtoGlobal.updateMany({
       where: whereClause,
