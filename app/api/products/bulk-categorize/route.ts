@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
+import { OrigemClassificacao, Prisma } from "@prisma/client";
+import { buildClassificationHistoryRecord } from "@/lib/classification-history";
 
 export async function POST(request: Request) {
   try {
@@ -55,9 +56,33 @@ export async function POST(request: Request) {
       dataToUpdate.ncm = ncm.replace(/\D/g, "");
     }
 
-    const resultado = await prisma.produtoGlobal.updateMany({
-      where: whereClause,
-      data: dataToUpdate,
+    const resultado = await prisma.$transaction(async (tx) => {
+      const before = await tx.produtoGlobal.findMany({ where: whereClause });
+      const updated = await tx.produtoGlobal.updateMany({
+        where: whereClause,
+        data: dataToUpdate,
+      });
+      const history = before.flatMap((product) => {
+        const after = {
+          ...product,
+          categoria: categoria ? categoria.trim() : product.categoria,
+          subcategoria: subcategoria ? subcategoria.trim() : product.subcategoria,
+          marca: marca ? marca.trim() : product.marca,
+          ncm: ncm ? ncm.replace(/\D/g, "") : product.ncm,
+        };
+        const record = buildClassificationHistoryRecord(
+          product,
+          after,
+          OrigemClassificacao.LOTE,
+        );
+        return record ? [record] : [];
+      });
+      for (let offset = 0; offset < history.length; offset += 500) {
+        await tx.historicoClassificacao.createMany({
+          data: history.slice(offset, offset + 500),
+        });
+      }
+      return updated;
     });
 
     return NextResponse.json({ success: true, count: resultado.count });

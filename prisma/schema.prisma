@@ -23,6 +23,7 @@ model ProdutoGlobal {
   origem_dado      String?         @db.VarChar(100) 
   status_auditoria StatusAuditoria @default(PENDENTE)
   notas_internas   String?         @db.Text
+  historicos       HistoricoClassificacao[]
 
   created_at       DateTime        @default(now())
   updated_at       DateTime        @updatedAt
@@ -31,6 +32,32 @@ model ProdutoGlobal {
   @@index([subcategoria]) // <-- ÍNDICE PARA DEIXAR A API RÁPIDA
   @@index([status_auditoria])
   @@map("produtos_globais")
+}
+
+model HistoricoClassificacao {
+  id                 Int                 @id @default(autoincrement())
+  produto_id         Int
+  codigo_barras      String
+  descricao          String              @db.VarChar(255)
+  origem             OrigemClassificacao
+  ncm_anterior       String?             @db.VarChar(10)
+  categoria_anterior String?             @db.VarChar(100)
+  subcategoria_anterior String?          @db.VarChar(100)
+  marca_anterior     String?             @db.VarChar(100)
+  ncm                String?             @db.VarChar(10)
+  categoria          String?             @db.VarChar(100)
+  subcategoria       String?             @db.VarChar(100)
+  marca              String?             @db.VarChar(100)
+  confirmou_ncm      Boolean             @default(false)
+  confirmou_categoria Boolean            @default(false)
+  confirmou_subcategoria Boolean          @default(false)
+  confirmou_marca    Boolean             @default(false)
+  criado_em          DateTime            @default(now())
+  produto            ProdutoGlobal       @relation(fields: [produto_id], references: [id], onDelete: Cascade)
+
+  @@index([produto_id, criado_em])
+  @@index([criado_em])
+  @@map("historico_classificacao")
 }
 
 // Adicionar ao final do schema.prisma, antes dos @@map:
@@ -50,4 +77,10 @@ enum StatusAuditoria {
   PENDENTE
   REVISADO
   REJEITADO
+}
+
+enum OrigemClassificacao {
+  MANUAL
+  IA
+  LOTE
 }

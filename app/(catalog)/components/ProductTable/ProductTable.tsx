@@ -68,6 +68,15 @@ export default function ProductTable({
     setSelectAllPages(false);
   };
 
+  const clearReviewedProduct = (id: number) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+    setSelectAllPages(false);
+  };
+
   const handleExport = (format: "csv" | "xlsx", exportAllBase: boolean) => {
     const params = new URLSearchParams();
     params.set("format", format);
@@ -241,7 +250,10 @@ export default function ProductTable({
         )}
 
         <div className="flex gap-2 flex-wrap justify-end items-center">
-          <AIAuditAssistant selectedProducts={selectedProducts} />
+          <AIAuditAssistant
+            selectedProducts={selectedProducts}
+            onProductReviewed={clearReviewedProduct}
+          />
           <button
             onClick={() => setIsReplaceModalOpen(true)}
             className="bg-zinc-600 hover:bg-neutral-950 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors shadow-sm"

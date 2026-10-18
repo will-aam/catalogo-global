@@ -17,7 +17,9 @@ type AuditProduct = {
 type NcmOption = { codigo: string; descricao: string };
 type Classification = {
   categoria: string;
+  subcategoria: string | null;
   categoriaAcao: "preencher" | "manter" | "corrigir" | "sem_sugestao";
+  subcategoriaAcao: "preencher" | "manter" | "corrigir" | "sem_sugestao";
   marca: string | null;
   marcaAcao: "preencher" | "manter" | "corrigir" | "sem_sugestao";
   ncmSugerido: NcmOption | null;
@@ -26,6 +28,12 @@ type Classification = {
   evidenciaWeb: string;
   justificativa: string;
   fontesWeb: { title: string; url: string; score: number }[];
+  padroesHistorico: {
+    ncm: { codigo: string | null; categoria: string | null; subcategoria: string | null; ocorrencias: number; similaridade: number }[];
+    categorias: { categoria: string | null; subcategoria: string | null; ocorrencias: number; similaridade: number }[];
+    subcategorias: { categoria: string | null; subcategoria: string | null; ocorrencias: number; similaridade: number }[];
+    marcas: { marca: string | null; ocorrencias: number; similaridade: number }[];
+  };
 };
 
 const actionLabels: Record<string, string> = {
@@ -38,29 +46,36 @@ const actionLabels: Record<string, string> = {
 
 export default function AIAuditAssistant({
   selectedProducts = [],
+  onProductReviewed,
 }: {
   selectedProducts: AuditProduct[];
+  onProductReviewed: (id: number) => void;
 }) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [suggestion, setSuggestion] = useState<Classification | null>(null);
   const [categoria, setCategoria] = useState("");
+  const [subcategoria, setSubcategoria] = useState("");
   const [marca, setMarca] = useState("");
   const [ncm, setNcm] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [reviewQueue, setReviewQueue] = useState<AuditProduct[]>([]);
 
-  const product = selectedProducts[currentIndex] || null;
+  const product = reviewQueue[currentIndex] || null;
 
   const open = () => {
+    const queue = [...selectedProducts];
+    setReviewQueue(queue);
     setCurrentIndex(0);
     setSuggestion(null);
-    setCategoria(selectedProducts[0]?.categoria || "");
-    setMarca(selectedProducts[0]?.marca || "");
-    setNcm(selectedProducts[0]?.ncm || "");
+    setCategoria(queue[0]?.categoria || "");
+    setSubcategoria(queue[0]?.subcategoria || "");
+    setMarca(queue[0]?.marca || "");
+    setNcm(queue[0]?.ncm || "");
     setError("");
     setDone(false);
     setIsOpen(true);
@@ -86,6 +101,11 @@ export default function AIAuditAssistant({
           ? data.categoria || product.categoria || ""
           : product.categoria || "",
       );
+      setSubcategoria(
+        data.subcategoriaAcao === "preencher" || data.subcategoriaAcao === "corrigir"
+          ? data.subcategoria || product.subcategoria || ""
+          : product.subcategoria || "",
+      );
       setMarca(
         data.marcaAcao === "preencher" || data.marcaAcao === "corrigir"
           ? data.marca || product.marca || ""
@@ -108,9 +128,10 @@ export default function AIAuditAssistant({
   const goToProduct = (index: number) => {
     setCurrentIndex(index);
     setSuggestion(null);
-    setCategoria(selectedProducts[index]?.categoria || "");
-    setMarca(selectedProducts[index]?.marca || "");
-    setNcm(selectedProducts[index]?.ncm || "");
+    setCategoria(reviewQueue[index]?.categoria || "");
+    setSubcategoria(reviewQueue[index]?.subcategoria || "");
+    setMarca(reviewQueue[index]?.marca || "");
+    setNcm(reviewQueue[index]?.ncm || "");
     setError("");
   };
 
@@ -139,14 +160,35 @@ export default function AIAuditAssistant({
         body: JSON.stringify({
           ...product,
           categoria,
+          subcategoria,
           marca,
           ncm: normalizedNcm,
+          origemClassificacao: "IA",
+          sugestoesAuditoria: {
+            categoria:
+              suggestion.categoriaAcao === "preencher" || suggestion.categoriaAcao === "corrigir"
+                ? suggestion.categoria
+                : null,
+            subcategoria:
+              suggestion.subcategoriaAcao === "preencher" || suggestion.subcategoriaAcao === "corrigir"
+                ? suggestion.subcategoria
+                : null,
+            marca:
+              suggestion.marcaAcao === "preencher" || suggestion.marcaAcao === "corrigir"
+                ? suggestion.marca
+                : null,
+            ncm:
+              suggestion.ncmStatus === "preencher" || suggestion.ncmStatus === "corrigir"
+                ? suggestion.ncmSugerido?.codigo || null
+                : null,
+          },
         }),
       });
       if (!response.ok) throw new Error("Não foi possível salvar a auditoria.");
 
+      onProductReviewed(product.id);
       router.refresh();
-      if (currentIndex + 1 >= selectedProducts.length) {
+      if (currentIndex + 1 >= reviewQueue.length) {
         setDone(true);
       } else {
         goToProduct(currentIndex + 1);
@@ -159,7 +201,7 @@ export default function AIAuditAssistant({
   };
 
   const skip = () => {
-    if (currentIndex + 1 >= selectedProducts.length) {
+    if (currentIndex + 1 >= reviewQueue.length) {
       setDone(true);
     } else {
       goToProduct(currentIndex + 1);
@@ -191,7 +233,7 @@ export default function AIAuditAssistant({
               <div>
                 <h2 className="text-lg font-bold text-slate-900">Revisão assistida por IA</h2>
                 <p className="text-xs text-slate-500">
-                  Item {Math.min(currentIndex + 1, selectedProducts.length)} de {selectedProducts.length}. A IA só é consultada quando você pedir.
+                  Item {Math.min(currentIndex + 1, reviewQueue.length)} de {reviewQueue.length}. A IA só é consultada quando você pedir.
                 </p>
               </div>
               <button
@@ -241,6 +283,13 @@ export default function AIAuditAssistant({
                   )}
 
                   <div className="space-y-4">
+                    <label className="block space-y-1.5">
+                      <span className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
+                        <span>Subcategoria</span>
+                        {suggestion && <span className={`text-[11px] font-medium ${suggestion.subcategoriaAcao === "corrigir" ? "text-amber-700" : "text-slate-500"}`}>{actionLabels[suggestion.subcategoriaAcao]}</span>}
+                      </span>
+                      <input value={subcategoria} onChange={(event) => setSubcategoria(event.target.value)} disabled={!suggestion || loading} placeholder="A IA sugerirá uma subcategoria" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50 disabled:text-slate-600" />
+                    </label>
                     <label className="block space-y-1.5">
                       <span className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
                         <span>Categoria (existente ou nova)</span>
@@ -304,6 +353,24 @@ export default function AIAuditAssistant({
                         <p className="text-slate-700">Revise os campos sinalizados antes de salvar. Para trocar o NCM, escolha um código da tabela oficial acima.</p>
                       </div>
                     )}
+                    {suggestion && Object.values(suggestion.padroesHistorico || {}).some((patterns) => patterns.length > 0) && (
+                      <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs text-violet-950">
+                        <p className="font-semibold">Padrões de revisões anteriores (apoio, não regra)</p>
+                        {suggestion.padroesHistorico.ncm.length > 0 && (
+                          <p>NCM: {suggestion.padroesHistorico.ncm.slice(0, 3).map((item) => `${item.codigo}${item.categoria ? ` em ${item.categoria}` : ""} (${item.ocorrencias} revisão(ões))`).join("; ")}</p>
+                        )}
+                        {suggestion.padroesHistorico.categorias.length > 0 && (
+                          <p>Categoria: {suggestion.padroesHistorico.categorias.slice(0, 3).map((item) => `${item.categoria}${item.subcategoria ? ` / ${item.subcategoria}` : ""} (${item.ocorrencias})`).join("; ")}</p>
+                        )}
+                        {suggestion.padroesHistorico.subcategorias.length > 0 && (
+                          <p>Subcategoria: {suggestion.padroesHistorico.subcategorias.slice(0, 3).map((item) => `${item.categoria ? `${item.categoria} / ` : ""}${item.subcategoria} (${item.ocorrencias})`).join("; ")}</p>
+                        )}
+                        {suggestion.padroesHistorico.marcas.length > 0 && (
+                          <p>Marca: {suggestion.padroesHistorico.marcas.slice(0, 3).map((item) => `${item.marca} (${item.ocorrencias})`).join("; ")}</p>
+                        )}
+                        <p className="text-violet-800">Esses padrões vieram de produtos com descrições ou categorias semelhantes. Confirme cada campo com as evidências do item atual.</p>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -313,7 +380,7 @@ export default function AIAuditAssistant({
               {!done && product && (
                 <>
                   <button type="button" onClick={skip} disabled={loading || saving} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Pular sem salvar</button>
-                  <button type="button" onClick={saveAndContinue} disabled={saving || loading || !suggestion} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{saving ? "Salvando…" : currentIndex + 1 === selectedProducts.length ? "Salvar revisão" : "Salvar e próximo item"}</button>
+                  <button type="button" onClick={saveAndContinue} disabled={saving || loading || !suggestion} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{saving ? "Salvando…" : currentIndex + 1 === reviewQueue.length ? "Salvar revisão" : "Salvar e próximo item"}</button>
                 </>
               )}
               {done && <button type="button" onClick={() => setIsOpen(false)} className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white">Concluir</button>}
