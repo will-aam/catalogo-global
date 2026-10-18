@@ -6,7 +6,7 @@ export default function GerenciarLayout({
   children: React.ReactNode;
 }) {
   return (
-    <main className="min-h-screen bg-slate-100 p-4">
+    <main className="min-h-full bg-slate-100 p-4">
       <div className="max-w-5xl mx-auto">
         <div className="mb-4">
           <Link

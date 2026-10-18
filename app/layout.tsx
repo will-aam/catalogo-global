@@ -43,7 +43,8 @@ export default function RootLayout({
             paddingLeft: "3.5rem",
             flex: "1 1 0%",
             minHeight: 0,
-            overflow: "hidden",
+            overflowY: "auto",
+            overflowX: "hidden",
           }}
         >
           {children}
