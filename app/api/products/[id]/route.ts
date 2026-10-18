@@ -20,6 +20,7 @@ export async function PUT(
         categoria: body.categoria?.trim() === "" ? null : body.categoria,
         subcategoria:
           body.subcategoria?.trim() === "" ? null : body.subcategoria,
+        status_auditoria: "REVISADO",
       },
     });
 

@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { ProdutoGlobal } from "@prisma/client";
 import ProductRow from "./ProductRow";
+import AIAuditAssistant from "./AIAuditAssistant";
 import { useRouter } from "next/navigation";
 import NCMReplaceModal from "../NCMReplace/NCMReplaceModal";
 import type { BulkPayload } from "@/app/(catalog)/types";
@@ -48,6 +49,7 @@ export default function ProductTable({
 
   const allOnPageSelected =
     produtos.length > 0 && selectedIds.size === produtos.length;
+  const selectedProducts = produtos.filter((produto) => selectedIds.has(produto.id));
 
   const toggleAll = () => {
     if (allOnPageSelected) {
@@ -239,6 +241,7 @@ export default function ProductTable({
         )}
 
         <div className="flex gap-2 flex-wrap justify-end items-center">
+          <AIAuditAssistant selectedProducts={selectedProducts} />
           <button
             onClick={() => setIsReplaceModalOpen(true)}
             className="bg-zinc-600 hover:bg-neutral-950 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors shadow-sm"

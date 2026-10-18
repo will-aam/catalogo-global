@@ -634,7 +634,22 @@ export default function ProductRow({
           className="p-2 sm:p-4 font-medium text-gray-700 truncate max-w-50 sm:max-w-75"
           title={produto.descricao}
         >
-          {produto.descricao}
+          <div className="truncate">{produto.descricao}</div>
+          <span
+            className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+              produto.status_auditoria === "REVISADO"
+                ? "bg-emerald-50 text-emerald-700"
+                : produto.status_auditoria === "REJEITADO"
+                  ? "bg-red-50 text-red-700"
+                  : "bg-amber-50 text-amber-700"
+            }`}
+          >
+            {produto.status_auditoria === "REVISADO"
+              ? "Revisado"
+              : produto.status_auditoria === "REJEITADO"
+                ? "Rejeitado"
+                : "Pendente"}
+          </span>
         </td>
 
         <td
