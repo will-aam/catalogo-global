@@ -60,6 +60,28 @@ model HistoricoClassificacao {
   @@map("historico_classificacao")
 }
 
+model GroqRequestLog {
+  id                    Int             @id @default(autoincrement())
+  requestId             String          @unique @map("request_id")
+  createdAt             DateTime        @map("created_at")
+  statusCode            Int             @map("status_code")
+  model                 String          @db.VarChar(120)
+  timeToFirstToken      Float?          @map("time_to_first_token")
+  timeToCompletion      Float?          @map("time_to_completion")
+  inputTokens           Int             @default(0) @map("input_tokens")
+  inputNonCachedTokens  Int             @default(0) @map("input_non_cached_tokens")
+  inputCachedTokens     Int             @default(0) @map("input_cached_tokens")
+  inputAudioSeconds     Float           @default(0) @map("input_audio_seconds")
+  outputTokens          Int             @default(0) @map("output_tokens")
+  errorCode             String?         @map("error_code") @db.VarChar(120)
+  errorMessage          String?         @map("error_message") @db.VarChar(500)
+  origin                OrigemLogIA     @default(SISTEMA)
+
+  @@index([createdAt])
+  @@index([statusCode, createdAt])
+  @@map("groq_api_usage")
+}
+
 // Adicionar ao final do schema.prisma, antes dos @@map:
 
 model NCM {
@@ -83,4 +105,9 @@ enum OrigemClassificacao {
   MANUAL
   IA
   LOTE
+}
+
+enum OrigemLogIA {
+  IMPORTACAO
+  SISTEMA
 }

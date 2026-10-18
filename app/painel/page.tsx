@@ -57,7 +57,7 @@ function StatCard({
 export default async function PainelPage() {
   const today = dateKey(new Date());
   const activityWindowStart = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-  const [totalProdutos, revisoesSalvas, revisoesPorOrigem, ncmPreenchido, categoriaPreenchida, subcategoriaPreenchida, marcaPreenchida, pendentes, produtosRevisados, atividadePorDia, camposConfirmados, historicoRecente] = await Promise.all([
+  const [totalProdutos, revisoesSalvas, revisoesPorOrigem, ncmPreenchido, categoriaPreenchida, subcategoriaPreenchida, marcaPreenchida, pendentes, produtosRevisados, atividadePorDia, camposConfirmados, historicoRecente, groqRequests, groqSuccesses, groqRateLimits, groqTokens, groqRecent] = await Promise.all([
     prisma.produtoGlobal.count(),
     prisma.historicoClassificacao.count(),
     prisma.historicoClassificacao.groupBy({
@@ -111,6 +111,25 @@ export default async function PainelPage() {
         criado_em: true,
       },
     }),
+    prisma.groqRequestLog.count(),
+    prisma.groqRequestLog.count({ where: { statusCode: { gte: 200, lt: 300 } } }),
+    prisma.groqRequestLog.count({ where: { statusCode: 429 } }),
+    prisma.groqRequestLog.aggregate({
+      _sum: { inputTokens: true, outputTokens: true, inputCachedTokens: true },
+    }),
+    prisma.groqRequestLog.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      select: {
+        requestId: true,
+        createdAt: true,
+        statusCode: true,
+        model: true,
+        inputTokens: true,
+        outputTokens: true,
+        errorMessage: true,
+      },
+    }),
   ]);
 
   const byOrigin = new Map(
@@ -136,6 +155,7 @@ export default async function PainelPage() {
     { label: "Marca", filled: marcaPreenchida, color: "bg-amber-500" },
   ];
   const confirmedFieldCount = camposConfirmados[0]?.total || 0;
+  const groqTotalTokens = (groqTokens._sum.inputTokens || 0) + (groqTokens._sum.outputTokens || 0);
 
   return (
     <div className="min-h-full bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
@@ -157,6 +177,42 @@ export default async function PainelPage() {
           <StatCard label="Revisões com IA" value={byOrigin.get(OrigemClassificacao.IA) || 0} detail="Sugestões salvas por você" accent="bg-violet-500" />
           <StatCard label="Revisões manuais" value={byOrigin.get(OrigemClassificacao.MANUAL) || 0} detail="Edições individuais salvas" accent="bg-blue-500" />
           <StatCard label="Atualizações em lote" value={byOrigin.get(OrigemClassificacao.LOTE) || 0} detail="Itens alterados em operações em lote" accent="bg-amber-500" />
+        </section>
+
+        <section aria-label="Uso da IA Groq" className="space-y-4">
+          <div>
+            <h2 className="font-bold text-slate-900">Uso da IA (Groq)</h2>
+            <p className="mt-1 text-xs text-slate-500">Inclui os registros importados do console e as chamadas feitas pelo sistema.</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard label="Requisições" value={groqRequests} detail="Registros de uso armazenados" accent="bg-slate-500" />
+            <StatCard label="Concluídas" value={groqSuccesses} detail="Respostas bem-sucedidas" accent="bg-emerald-500" />
+            <StatCard label="Limite atingido" value={groqRateLimits} detail="Respostas HTTP 429" accent="bg-rose-500" />
+            <StatCard label="Tokens processados" value={groqTotalTokens} detail={`${(groqTokens._sum.inputCachedTokens || 0).toLocaleString("pt-BR")} tokens de entrada em cache`} accent="bg-violet-500" />
+          </div>
+          {groqRecent.length > 0 && (
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 px-5 py-3">
+                <h3 className="text-sm font-semibold text-slate-800">Chamadas recentes</h3>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {groqRecent.map((request) => (
+                  <div key={request.requestId} className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className={`h-2.5 w-2.5 rounded-full ${request.statusCode >= 200 && request.statusCode < 300 ? "bg-emerald-500" : request.statusCode === 429 ? "bg-rose-500" : "bg-amber-500"}`} />
+                      <span className="font-medium text-slate-800">HTTP {request.statusCode}</span>
+                      <span className="text-slate-400">{request.model}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                      {request.errorMessage && <span className="font-medium text-rose-700">{request.errorMessage}</span>}
+                      <span>{(request.inputTokens + request.outputTokens).toLocaleString("pt-BR")} tokens</span>
+                      <time>{formatDate(request.createdAt)}</time>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">

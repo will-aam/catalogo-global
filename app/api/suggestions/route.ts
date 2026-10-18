@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { recordGroqUsage } from "@/lib/groq-usage";
 
 const classificationSchema = z.object({
   categoria: z.string(),
@@ -428,6 +430,8 @@ export async function POST(request: Request) {
     }
     const exemplosPorCodigo = historicoSimilar.filter(({ barcodeMatch }) => barcodeMatch).map(({ entry }) => ({ categoria: entry.categoria, subcategoria: entry.subcategoria, marca: entry.marca, ncm: entry.ncm }));
     const prompt = `Audite este produto brasileiro. Código de barras/GTIN: ${codigoBarras || "não informado"}. Descrição cadastrada: ${descricao.trim()}. Valores atuais: ${JSON.stringify(valoresAtuais)}. NCM atual na tabela oficial: ${JSON.stringify(ncmAtualOficial)}.\n\nResultados da pesquisa Tavily na internet: ${JSON.stringify(fontesWeb)}. Use os resultados para identificar produto e marca; se não houver evidência suficiente para a marca, deixe-a sem sugestão.\n\nHistórico de decisões humanas confirmadas em produtos com descrição/categoria/subcategoria semelhantes: ${JSON.stringify(padroesHistorico)}. Revisões anteriores para este mesmo código de barras: ${JSON.stringify(exemplosPorCodigo)}. Use o histórico somente como evidência auxiliar, nunca como regra ou prova. Os itens são correções confirmadas, mas podem ser exceções ou ter sido substituídos; avalie cada produto pelas características próprias e pela fonte oficial. Não copie NCM de produto parecido sem correspondência técnica.\n\nPara categoria vazia, classifique pela descrição do produto e escolha a categoria existente mais adequada desta lista: ${JSON.stringify(categorias)}. A categoria pode ser sugerida a partir da descrição; não dependa de a pesquisa web mencionar uma categoria. Se nenhuma categoria existente servir, sugira uma categoria nova, clara e curta. Quando o produto for identificável, não deixe categoria vazia e use a ação preencher. Se a categoria atual estiver preenchida e for adequada, preserve-a; só corrija com uma alternativa melhor justificada. Para subcategoria, escolha uma opção existente compatível com a categoria dentre ${JSON.stringify(subcategorias)} ou sugira uma nova quando necessário; mantenha null/sem_sugestao se não houver segurança.\n\nA lista abaixo foi consultada diretamente na tabela oficial Prisma: escolha exclusivamente um código dessa lista para sugerir; se nenhum for adequado, use null. Lista oficial: ${JSON.stringify(candidatos)}. Marcas existentes: ${JSON.stringify(marcas)}. Para marca vazia, escolha uma marca somente quando houver evidência nos resultados web ou na descrição. Preserve valores atuais corretos; sugira apenas campos vazios ou incorretos. Compare NCM atual, lista oficial e evidências web. Use confirmado, corrigir, preencher ou sem_sugestao conforme o caso. Não invente códigos. Em evidenciaWeb resuma os achados dos resultados recebidos.`;
+    const groqRequestStartedAt = new Date();
+    const groqStartedAtMs = Date.now();
     const modelResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -458,12 +462,52 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(30_000),
       cache: "no-store",
     });
-    if (!modelResponse.ok) throw new GroqApiError(modelResponse.status);
+    const groqRequestId = modelResponse.headers.get("x-request-id") || `app_${randomUUID()}`;
+    const groqDurationSeconds = (Date.now() - groqStartedAtMs) / 1000;
+    if (!modelResponse.ok) {
+      const errorBody: unknown = await modelResponse.json().catch(() => null);
+      const parsedError = z.object({
+        error: z.object({ code: z.string().optional() }).passthrough(),
+      }).safeParse(errorBody);
+      const errorCode = parsedError.success ? parsedError.data.error.code || null : null;
+      await recordGroqUsage({
+        requestId: groqRequestId,
+        createdAt: groqRequestStartedAt,
+        statusCode: modelResponse.status,
+        model,
+        timeToCompletion: groqDurationSeconds,
+        errorCode,
+        errorMessage: errorCode === "rate_limit_exceeded"
+          ? "Limite de uso da Groq atingido."
+          : `A API Groq respondeu com HTTP ${modelResponse.status}.`,
+      });
+      throw new GroqApiError(modelResponse.status);
+    }
+
+    const responseBody: unknown = await modelResponse.json();
     const completion = z.object({
       choices: z.array(z.object({
         message: z.object({ content: z.string().nullable() }),
       })),
-    }).parse(await modelResponse.json());
+      usage: z.object({
+        prompt_tokens: z.number().optional(),
+        completion_tokens: z.number().optional(),
+        prompt_tokens_details: z.object({ cached_tokens: z.number().optional() }).passthrough().optional(),
+      }).passthrough().optional(),
+    }).parse(responseBody);
+    const inputTokens = completion.usage?.prompt_tokens || 0;
+    const cachedTokens = completion.usage?.prompt_tokens_details?.cached_tokens || 0;
+    await recordGroqUsage({
+      requestId: groqRequestId,
+      createdAt: groqRequestStartedAt,
+      statusCode: modelResponse.status,
+      model,
+      timeToCompletion: groqDurationSeconds,
+      inputTokens,
+      inputCachedTokens: cachedTokens,
+      inputNonCachedTokens: Math.max(0, inputTokens - cachedTokens),
+      outputTokens: completion.usage?.completion_tokens || 0,
+    });
     const parsed = classificationSchema.parse(
       JSON.parse(completion.choices[0]?.message.content || "{}"),
     );
