@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
@@ -20,6 +20,8 @@ type Classification = {
   subcategoria: string | null;
   categoriaAcao: "preencher" | "manter" | "corrigir" | "sem_sugestao";
   subcategoriaAcao: "preencher" | "manter" | "corrigir" | "sem_sugestao";
+  categoriaOrigem: "existente" | "nova" | "atual" | "sem_sugestao";
+  subcategoriaOrigem: "existente" | "nova" | "atual" | "sem_sugestao";
   marca: string | null;
   marcaAcao: "preencher" | "manter" | "corrigir" | "sem_sugestao";
   ncmSugerido: NcmOption | null;
@@ -34,7 +36,30 @@ type Classification = {
     subcategorias: { categoria: string | null; subcategoria: string | null; ocorrencias: number; similaridade: number }[];
     marcas: { marca: string | null; ocorrencias: number; similaridade: number }[];
   };
+  usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
+  rateLimit?: {
+    remainingTokens: number | null;
+    resetTokensMs: number | null;
+    remainingRequests: number | null;
+    resetRequestsMs: number | null;
+    retryAfterMs: number | null;
+  };
 };
+
+const quotaStorageKey = "catalogo-groq-quota-wait";
+
+function formatWait(ms: number) {
+  const seconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return minutes > 0
+    ? `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`
+    : `${remainingSeconds}s`;
+}
+
+function sameLabel(left: string, right: string) {
+  return left.trim().localeCompare(right.trim(), "pt-BR", { sensitivity: "base" }) === 0;
+}
 
 const actionLabels: Record<string, string> = {
   preencher: "Campo vazio: sugestão para preencher",
@@ -42,6 +67,20 @@ const actionLabels: Record<string, string> = {
   corrigir: "Possível divergência: revise a correção",
   confirmado: "Código atual confirmado",
   sem_sugestao: "Sem evidência suficiente para sugerir",
+};
+
+const originLabels: Record<Classification["categoriaOrigem"], string> = {
+  existente: "Usando existente",
+  nova: "Nova sugestão",
+  atual: "Valor atual",
+  sem_sugestao: "Sem sugestão",
+};
+
+const originClasses: Record<Classification["categoriaOrigem"], string> = {
+  existente: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  nova: "border-violet-200 bg-violet-50 text-violet-800",
+  atual: "border-slate-200 bg-slate-100 text-slate-700",
+  sem_sugestao: "border-amber-200 bg-amber-50 text-amber-800",
 };
 
 export default function AIAuditAssistant({
@@ -64,6 +103,47 @@ export default function AIAuditAssistant({
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
   const [reviewQueue, setReviewQueue] = useState<AuditProduct[]>([]);
+  const [quotaWaitUntil, setQuotaWaitUntil] = useState<number | null>(null);
+  const [quotaWaitMessage, setQuotaWaitMessage] = useState("");
+  const [clockNow, setClockNow] = useState(Date.now());
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(quotaStorageKey);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as { until?: number; message?: string };
+      if (parsed.until && parsed.until > Date.now()) {
+        setQuotaWaitUntil(parsed.until);
+        setQuotaWaitMessage(parsed.message || "Aguardando a renovação do limite de tokens da Groq.");
+      } else {
+        localStorage.removeItem(quotaStorageKey);
+      }
+    } catch {
+      localStorage.removeItem(quotaStorageKey);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!quotaWaitUntil) return;
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setClockNow(now);
+      if (now >= quotaWaitUntil) {
+        setQuotaWaitUntil(null);
+        setQuotaWaitMessage("A janela de tokens foi renovada. Você pode gerar a próxima sugestão.");
+        localStorage.removeItem(quotaStorageKey);
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [quotaWaitUntil]);
+
+  const startQuotaWait = (waitMs: number, message: string) => {
+    const until = Date.now() + Math.max(1000, waitMs);
+    setQuotaWaitUntil(until);
+    setClockNow(Date.now());
+    setQuotaWaitMessage(message);
+    localStorage.setItem(quotaStorageKey, JSON.stringify({ until, message }));
+  };
 
   const product = reviewQueue[currentIndex] || null;
 
@@ -83,6 +163,10 @@ export default function AIAuditAssistant({
 
   const generateSuggestion = async () => {
     if (!product) return;
+    if (quotaWaitUntil && quotaWaitUntil > Date.now()) {
+      setQuotaWaitMessage(`Aguarde ${formatWait(quotaWaitUntil - Date.now())}; a contagem vem do limite informado pela Groq.`);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -93,7 +177,25 @@ export default function AIAuditAssistant({
       });
       const data = await response.json();
       if (!response.ok) {
+        if (response.status === 429) {
+          const waitMs = data.rateLimit?.retryAfterMs || data.rateLimit?.resetTokensMs || data.rateLimit?.resetRequestsMs || 60_000;
+          startQuotaWait(waitMs + 1000, "A Groq pediu uma pausa por limite de uso. O assistente vai mostrar quando tentar novamente.");
+          setError("");
+          return;
+        }
         throw new Error(data.error || "Não foi possível gerar sugestões.");
+      }
+      const rateLimit = data.rateLimit as Classification["rateLimit"];
+      const requestTokens = Number(data.usage?.totalTokens || 0);
+      if (rateLimit?.remainingTokens !== null && rateLimit?.remainingTokens !== undefined &&
+          rateLimit.resetTokensMs && requestTokens > 0 && rateLimit.remainingTokens < requestTokens) {
+        startQuotaWait(
+          rateLimit.resetTokensMs + 1000,
+          `Esta chamada usou ${requestTokens.toLocaleString("pt-BR")} tokens. Restam ${rateLimit.remainingTokens.toLocaleString("pt-BR")} nesta janela; a próxima auditoria pode exceder o limite.`,
+        );
+      } else {
+        setQuotaWaitUntil(null);
+        localStorage.removeItem(quotaStorageKey);
       }
       setSuggestion(data);
       setCategoria(
@@ -265,6 +367,16 @@ export default function AIAuditAssistant({
                 </div>
               )}
 
+              {quotaWaitMessage && (
+                <div role="status" aria-live="polite" className={`rounded-xl border p-4 text-sm ${quotaWaitUntil && quotaWaitUntil > clockNow ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
+                  <p className="font-semibold">{quotaWaitUntil && quotaWaitUntil > clockNow ? "Pausa recomendada antes da próxima auditoria" : "Limite atualizado"}</p>
+                  <p className="mt-1">{quotaWaitMessage}</p>
+                  {quotaWaitUntil && quotaWaitUntil > clockNow && (
+                    <p className="mt-2 font-mono text-base font-bold tabular-nums">Tente novamente em {formatWait(quotaWaitUntil - clockNow)}</p>
+                  )}
+                </div>
+              )}
+
               {product && !done && (
                 <>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -276,8 +388,8 @@ export default function AIAuditAssistant({
                   {!suggestion && !loading && (
                     <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-4">
                       <p className="text-sm text-violet-900">Nenhuma chamada foi feita para este item ainda. Gere a sugestão quando quiser usar sua cota de pesquisa e IA.</p>
-                      <button type="button" onClick={() => void generateSuggestion()} className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700">
-                        ✨ Gerar sugestão para este item
+                      <button type="button" onClick={() => void generateSuggestion()} disabled={loading} className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-70">
+                        {quotaWaitUntil && quotaWaitUntil > clockNow ? `Aguardar ${formatWait(quotaWaitUntil - clockNow)}` : "✨ Gerar sugestão para este item"}
                       </button>
                     </div>
                   )}
@@ -286,14 +398,24 @@ export default function AIAuditAssistant({
                     <label className="block space-y-1.5">
                       <span className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
                         <span>Subcategoria</span>
-                        {suggestion && <span className={`text-[11px] font-medium ${suggestion.subcategoriaAcao === "corrigir" ? "text-amber-700" : "text-slate-500"}`}>{actionLabels[suggestion.subcategoriaAcao]}</span>}
+                        {suggestion && <span className="flex flex-wrap items-center justify-end gap-1.5">
+                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${!sameLabel(subcategoria, suggestion.subcategoria || "") ? "border-blue-200 bg-blue-50 text-blue-800" : originClasses[suggestion.subcategoriaOrigem]}`}>
+                            {!sameLabel(subcategoria, suggestion.subcategoria || "") ? "Editada por você" : originLabels[suggestion.subcategoriaOrigem]}
+                          </span>
+                          <span className={`text-[11px] font-medium ${suggestion.subcategoriaAcao === "corrigir" ? "text-amber-700" : "text-slate-500"}`}>{actionLabels[suggestion.subcategoriaAcao]}</span>
+                        </span>}
                       </span>
                       <input value={subcategoria} onChange={(event) => setSubcategoria(event.target.value)} disabled={!suggestion || loading} placeholder="A IA sugerirá uma subcategoria" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50 disabled:text-slate-600" />
                     </label>
                     <label className="block space-y-1.5">
                       <span className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
                         <span>Categoria (existente ou nova)</span>
-                        {suggestion && <span className={`text-[11px] font-medium ${suggestion.categoriaAcao === "corrigir" ? "text-amber-700" : "text-slate-500"}`}>{actionLabels[suggestion.categoriaAcao]}</span>}
+                        {suggestion && <span className="flex flex-wrap items-center justify-end gap-1.5">
+                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${!sameLabel(categoria, suggestion.categoria) ? "border-blue-200 bg-blue-50 text-blue-800" : originClasses[suggestion.categoriaOrigem]}`}>
+                            {!sameLabel(categoria, suggestion.categoria) ? "Editada por você" : originLabels[suggestion.categoriaOrigem]}
+                          </span>
+                          <span className={`text-[11px] font-medium ${suggestion.categoriaAcao === "corrigir" ? "text-amber-700" : "text-slate-500"}`}>{actionLabels[suggestion.categoriaAcao]}</span>
+                        </span>}
                       </span>
                       <input value={categoria} onChange={(event) => setCategoria(event.target.value)} disabled={!suggestion || loading} placeholder="A IA sugerirá uma categoria" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50 disabled:text-slate-600" />
                     </label>

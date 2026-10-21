@@ -1,7 +1,7 @@
 // app/(catalog)/components/ProductTable/ProductTable.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ProdutoGlobal } from "@prisma/client";
 import ProductRow from "./ProductRow";
 import AIAuditAssistant from "./AIAuditAssistant";
@@ -21,14 +21,22 @@ export default function ProductTable({
   produtos,
   totalItemsEncontrados,
   categoriaFiltro,
+  marcaFiltro,
+  subcategoriaFiltro,
+  semNcm,
   termoBusca,
   currentSort,
+  statusFiltro,
 }: {
   produtos: ProdutoGlobal[];
   totalItemsEncontrados: number;
   categoriaFiltro?: string;
+  marcaFiltro?: string;
+  subcategoriaFiltro?: string;
+  semNcm?: boolean;
   termoBusca?: string;
   currentSort?: string;
+  statusFiltro?: string;
 }) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
@@ -37,53 +45,132 @@ export default function ProductTable({
   const [isSavingBulk, setIsSavingBulk] = useState(false);
   const [isDeletingBulk, setIsDeletingBulk] = useState(false);
   const [selectAllPages, setSelectAllPages] = useState(false);
+  const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set());
   const [isReplaceModalOpen, setIsReplaceModalOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [bulkNcm, setBulkNcm] = useState("");
+  const [showBulkEditor, setShowBulkEditor] = useState(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const exportButtonRef = useRef<HTMLButtonElement>(null);
+  const selectAllCheckboxRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    if (!isExportMenuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !exportMenuRef.current?.contains(event.target)
+      ) {
+        setIsExportMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsExportMenuOpen(false);
+        exportButtonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isExportMenuOpen]);
 
   const showFeedback = (type: FeedbackType, title: string, message: string) => {
     setFeedback({ type, title, message });
   };
 
+  const isProductSelected = (id: number) =>
+    selectAllPages ? !excludedIds.has(id) : selectedIds.has(id);
   const allOnPageSelected =
-    produtos.length > 0 && selectedIds.size === produtos.length;
-  const selectedProducts = produtos.filter((produto) => selectedIds.has(produto.id));
+    produtos.length > 0 && produtos.every((produto) => isProductSelected(produto.id));
+  const someOnPageSelected =
+    !allOnPageSelected && produtos.some((produto) => isProductSelected(produto.id));
+  const selectedProducts = produtos.filter((produto) => isProductSelected(produto.id));
+  const selectionCount = selectAllPages
+    ? Math.max(0, totalItemsEncontrados - excludedIds.size)
+    : selectedIds.size;
+  const hasSelection = selectionCount > 0;
+
+  useEffect(() => {
+    if (selectAllCheckboxRef.current) {
+      selectAllCheckboxRef.current.indeterminate = someOnPageSelected;
+    }
+  }, [someOnPageSelected]);
 
   const toggleAll = () => {
+    setShowBulkEditor(false);
     if (allOnPageSelected) {
-      setSelectedIds(new Set());
-      setSelectAllPages(false);
+      if (selectAllPages) {
+        setExcludedIds((current) => new Set([...current, ...produtos.map((product) => product.id)]));
+      } else {
+        setSelectedIds(new Set());
+        setShowBulkEditor(false);
+      }
     } else {
-      setSelectedIds(new Set(produtos.map((p) => p.id)));
+      if (selectAllPages) {
+        setExcludedIds((current) => {
+          const next = new Set(current);
+          produtos.forEach((product) => next.delete(product.id));
+          return next;
+        });
+      } else {
+        setSelectedIds(new Set(produtos.map((product) => product.id)));
+      }
     }
   };
 
   const toggleOne = (id: number) => {
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedIds(next);
-    setSelectAllPages(false);
+    setShowBulkEditor(false);
+    if (selectAllPages) {
+      setExcludedIds((current) => {
+        const next = new Set(current);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      return;
+    }
+
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const clearReviewedProduct = (id: number) => {
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      next.delete(id);
-      return next;
-    });
-    setSelectAllPages(false);
+    if (selectAllPages) {
+      setExcludedIds((current) => new Set(current).add(id));
+    } else {
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+    }
   };
 
   const handleExport = (format: "csv" | "xlsx", exportAllBase: boolean) => {
     const params = new URLSearchParams();
     params.set("format", format);
+    setIsExportMenuOpen(false);
 
     if (!exportAllBase) {
       if (categoriaFiltro) params.set("categoriaFiltro", categoriaFiltro);
+      if (marcaFiltro) params.set("marcaFiltro", marcaFiltro);
+      if (subcategoriaFiltro) params.set("subcategoriaFiltro", subcategoriaFiltro);
+      if (semNcm) params.set("semNcm", "true");
       if (termoBusca) params.set("termoBusca", termoBusca);
+      if (statusFiltro) params.set("statusFiltro", statusFiltro);
     }
 
     window.location.href = `/api/products/export?${params.toString()}`;
@@ -99,6 +186,11 @@ export default function ProductTable({
         payload.selectAllFilters = {
           categoriaFiltro: categoriaFiltro || null,
           termoBusca: termoBusca || null,
+          statusFiltro: statusFiltro || null,
+          marcaFiltro: marcaFiltro || null,
+          subcategoriaFiltro: subcategoriaFiltro || null,
+          semNcm: Boolean(semNcm),
+          excludeIds: Array.from(excludedIds),
         };
       } else {
         payload.ids = Array.from(selectedIds);
@@ -113,6 +205,8 @@ export default function ProductTable({
       if (res.ok) {
         setSelectedIds(new Set());
         setSelectAllPages(false);
+        setExcludedIds(new Set());
+        setShowBulkEditor(false);
         router.refresh();
         showFeedback(
           "success",
@@ -158,6 +252,11 @@ export default function ProductTable({
         payload.selectAllFilters = {
           categoriaFiltro: categoriaFiltro || null,
           termoBusca: termoBusca || null,
+          statusFiltro: statusFiltro || null,
+          marcaFiltro: marcaFiltro || null,
+          subcategoriaFiltro: subcategoriaFiltro || null,
+          semNcm: Boolean(semNcm),
+          excludeIds: Array.from(excludedIds),
         };
       } else {
         payload.ids = Array.from(selectedIds);
@@ -172,10 +271,12 @@ export default function ProductTable({
       if (res.ok) {
         setSelectedIds(new Set());
         setSelectAllPages(false);
+        setExcludedIds(new Set());
         setBulkCategory("");
         setBulkMarca("");
         setBulkSubcategoria("");
         setBulkNcm("");
+        setShowBulkEditor(false);
         router.refresh();
         showFeedback(
           "success",
@@ -211,59 +312,79 @@ export default function ProductTable({
     router.push(`/?${params.toString()}`);
   };
 
-  const deleteCount = selectAllPages ? totalItemsEncontrados : selectedIds.size;
+  const deleteCount = selectionCount;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border overflow-hidden flex-1 min-h-0 flex flex-col">
       {/* Barra de Ações em Lote */}
-      <div className="bg-blue-600 text-white p-3 flex flex-col xl:flex-row items-center justify-between sticky top-0 z-20 shadow-md border-b border-blue-700 gap-3 shrink-0">
-        {selectedIds.size > 0 ? (
-          <div className="flex flex-col">
-            <span className="font-semibold text-sm">
+      <div className="shrink-0 border-b border-blue-100 bg-blue-50/60 p-3">
+        <div className="flex flex-col items-start justify-between gap-3 xl:flex-row xl:items-center">
+        {hasSelection ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-bold text-blue-800">
               {selectAllPages ? (
-                <>
-                  Todos os{" "}
-                  <span className="font-bold underline">
-                    {totalItemsEncontrados}
-                  </span>{" "}
-                  itens.
-                </>
+                `${selectionCount.toLocaleString("pt-BR")} produtos selecionados`
               ) : (
-                <>{selectedIds.size} itens selecionados</>
+                `${selectionCount} ${selectionCount === 1 ? "produto selecionado" : "produtos selecionados"}`
               )}
             </span>
             {allOnPageSelected &&
               !selectAllPages &&
               totalItemsEncontrados > produtos.length && (
                 <button
-                  onClick={() => setSelectAllPages(true)}
-                  className="text-xs text-blue-200 hover:text-white underline mt-1 font-medium text-left"
+                  type="button"
+                  onClick={() => {
+                    setExcludedIds(new Set());
+                    setSelectAllPages(true);
+                  }}
+                  className="text-xs font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900"
                 >
-                  Selecionar todos os {totalItemsEncontrados}?
+                  Selecionar todos os {totalItemsEncontrados.toLocaleString("pt-BR")} resultados
                 </button>
               )}
+            <button
+              ref={exportButtonRef}
+              type="button"
+              onClick={() => {
+                setSelectedIds(new Set());
+                setSelectAllPages(false);
+                setExcludedIds(new Set());
+                setShowBulkEditor(false);
+              }}
+              className="text-xs font-medium text-slate-500 underline underline-offset-2 hover:text-slate-800"
+            >
+              Limpar seleção
+            </button>
           </div>
         ) : (
-          <div className="text-sm font-bold opacity-80">
-            Ferramentas de Auditoria
+          <div>
+            <h2 className="text-sm font-bold text-slate-800">Ferramentas da tabela</h2>
+            <p className="text-xs text-slate-500">Revise, substitua NCM ou exporte produtos.</p>
           </div>
         )}
 
-        <div className="flex gap-2 flex-wrap justify-end items-center">
+        <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:justify-end">
           <AIAuditAssistant
             selectedProducts={selectedProducts}
             onProductReviewed={clearReviewedProduct}
           />
           <button
+            type="button"
             onClick={() => setIsReplaceModalOpen(true)}
-            className="bg-zinc-600 hover:bg-neutral-950 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors shadow-sm"
+            className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             Substituir NCM
           </button>
 
-          {/* MENU DROPDOWN DE EXPORTAÇÃO (hover, sem gap morto) */}
-          <div className="relative inline-block text-left group">
-            <button className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors shadow-sm flex items-center gap-1.5">
+          <div className="relative" ref={exportMenuRef}>
+            <button
+              type="button"
+              aria-expanded={isExportMenuOpen}
+              aria-haspopup="dialog"
+              aria-controls="product-export-menu"
+              onClick={() => setIsExportMenuOpen((open) => !open)}
+              className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="16"
@@ -280,144 +401,160 @@ export default function ProductTable({
                 <line x1="12" x2="12" y1="15" y2="3" />
               </svg>
               Exportar
+              <span aria-hidden="true" className="text-xs text-slate-400">▾</span>
             </button>
 
-            {/*
-              Wrapper sem margem: usa `top-full` + `pt-2` para criar uma
-              "ponte" de hover contínua entre o botão e o menu (sem espaço
-              morto no meio), evitando que o dropdown feche antes do mouse
-              alcançar as opções.
-            */}
-            <div className="absolute right-0 top-full pt-2 w-52 hidden group-hover:block hover:block z-30">
-              <div className="bg-white border border-gray-200 rounded-md shadow-lg divide-y divide-gray-100">
-                <div className="py-1">
-                  <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                    Filtros Atuais da Tela
-                  </div>
-                  <button
-                    onClick={() => handleExport("csv", false)}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                  >
-                    📄 Baixar em CSV
-                  </button>
-                  <button
-                    onClick={() => handleExport("xlsx", false)}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                  >
-                    📊 Baixar em Excel (.xlsx)
-                  </button>
+            {isExportMenuOpen && (
+              <div
+                id="product-export-menu"
+                role="dialog"
+                aria-label="Opções de exportação"
+                className="absolute right-0 top-full z-30 mt-2 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+              >
+                <div className="border-b border-slate-100 px-3 py-2">
+                  <p className="text-xs font-bold text-slate-800">Exportar resultado</p>
+                  <p className="text-[11px] text-slate-500">Os filtros atuais serão aplicados.</p>
                 </div>
-                <div className="py-1">
-                  <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                    Banco Completo
-                  </div>
-                  <button
-                    onClick={() => handleExport("csv", true)}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                  >
-                    📄 Baixar Base Inteira (CSV)
-                  </button>
-                  <button
-                    onClick={() => handleExport("xlsx", true)}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                  >
-                    📊 Baixar Base Inteira (XLSX)
-                  </button>
+                <button
+                  type="button"
+                  onClick={() => handleExport("csv", false)}
+                  className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  CSV <span className="text-xs text-slate-500">— planilha compatível</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExport("xlsx", false)}
+                  className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Excel (.xlsx)
+                </button>
+                <div className="border-t border-slate-100 px-3 py-2">
+                  <p className="text-[11px] font-semibold text-slate-500">Banco completo</p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => handleExport("csv", true)}
+                  className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Base inteira (CSV)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExport("xlsx", true)}
+                  className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Base inteira (Excel)
+                </button>
               </div>
-            </div>
+            )}
           </div>
 
-          {selectedIds.size > 0 && (
+          {hasSelection && (
             <>
               <button
+                type="button"
+                aria-expanded={showBulkEditor}
+                onClick={() => setShowBulkEditor((open) => !open)}
+                className="min-h-9 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                {showBulkEditor ? "Fechar edição em lote" : "Editar em lote"}
+              </button>
+              <button
+                type="button"
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={isDeletingBulk || isSavingBulk}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-md text-sm font-bold transition-colors shadow-sm disabled:opacity-50 ml-2"
+                className="min-h-9 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50"
               >
-                {isDeletingBulk ? "Excluindo..." : "Excluir Selecionados"}
-              </button>
-
-              <div className="h-6 w-px bg-blue-400 mx-2"></div>
-
-              <input
-                type="text"
-                placeholder="Nova Marca"
-                value={bulkMarca}
-                onChange={(e) => setBulkMarca(e.target.value)}
-                className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-32"
-              />
-              <input
-                type="text"
-                placeholder="Nova Categoria"
-                value={bulkCategory}
-                onChange={(e) => setBulkCategory(e.target.value)}
-                className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-32"
-              />
-              <input
-                type="text"
-                placeholder="Nova Subcategoria"
-                value={bulkSubcategoria}
-                onChange={(e) => setBulkSubcategoria(e.target.value)}
-                className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-36"
-              />
-              <input
-                type="text"
-                placeholder="Novo NCM"
-                value={bulkNcm}
-                onChange={(e) => setBulkNcm(e.target.value.replace(/\D/g, ""))}
-                maxLength={8}
-                className="text-black px-3 py-1.5 rounded-md text-sm outline-none w-28 font-mono"
-              />
-              <button
-                onClick={handleBulkUpdate}
-                disabled={isSavingBulk || isDeletingBulk}
-                className="bg-green-500 hover:bg-green-400 text-white px-4 py-1.5 rounded-md text-sm font-bold transition-colors shadow-sm disabled:opacity-50"
-              >
-                {isSavingBulk ? "..." : "Aplicar"}
+                {isDeletingBulk ? "Excluindo…" : "Excluir selecionados"}
               </button>
             </>
           )}
         </div>
+
+        {hasSelection && showBulkEditor && (
+          <div className="mt-3 rounded-xl border border-blue-100 bg-white p-3 sm:p-4">
+            <div className="mb-3">
+              <h3 className="text-sm font-bold text-slate-800">Edição em lote</h3>
+              <p className="text-xs text-slate-500">
+                Preencha apenas os campos que deseja aplicar aos produtos selecionados.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <label className="space-y-1 text-xs font-semibold text-slate-600">
+                <span className="block">Marca</span>
+                <input aria-label="Nova marca" type="text" placeholder="Manter atual" value={bulkMarca} onChange={(e) => setBulkMarca(e.target.value)} className="min-h-10 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              </label>
+              <label className="space-y-1 text-xs font-semibold text-slate-600">
+                <span className="block">Categoria</span>
+                <input aria-label="Nova categoria" type="text" placeholder="Manter atual" value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)} className="min-h-10 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              </label>
+              <label className="space-y-1 text-xs font-semibold text-slate-600">
+                <span className="block">Subcategoria</span>
+                <input aria-label="Nova subcategoria" type="text" placeholder="Manter atual" value={bulkSubcategoria} onChange={(e) => setBulkSubcategoria(e.target.value)} className="min-h-10 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              </label>
+              <label className="space-y-1 text-xs font-semibold text-slate-600">
+                <span className="block">NCM</span>
+                <input aria-label="Novo NCM" type="text" inputMode="numeric" placeholder="Manter atual" value={bulkNcm} onChange={(e) => setBulkNcm(e.target.value.replace(/\D/g, ""))} maxLength={8} className="min-h-10 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm font-normal text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              </label>
+              <div className="flex items-end gap-2">
+                <button type="button" onClick={() => { setBulkMarca(""); setBulkCategory(""); setBulkSubcategoria(""); setBulkNcm(""); setShowBulkEditor(false); }} className="min-h-10 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
+                <button type="button" onClick={handleBulkUpdate} disabled={isSavingBulk || isDeletingBulk} className="min-h-10 flex-1 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-50">
+                  {isSavingBulk ? "Aplicando…" : "Aplicar alterações"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        </div>
       </div>
 
+      <div className="flex items-center justify-between border-b border-slate-100 bg-white px-3 py-2 text-[11px] text-slate-500 xl:hidden">
+        <span>Role a tabela para ver todas as colunas</span>
+        <span aria-hidden="true" className="text-sm">↔</span>
+      </div>
       <div className="overflow-auto flex-1 min-h-0">
-        <table className="w-full text-left text-sm table-fixed min-w-250 relative">
-          <thead className="bg-gray-100 border-b border-gray-200 text-gray-600 sticky top-0 z-10 shadow-sm">
+        <table className="relative w-full min-w-250 table-fixed text-left text-sm">
+          <thead className="sticky top-0 z-10 border-b border-blue-200 bg-blue-50 text-slate-700 shadow-sm">
             <tr>
-              <th className="p-4 w-16 text-center bg-gray-100">
+              <th scope="col" className="w-16 bg-blue-50 p-4 text-center">
                 <input
+                  ref={selectAllCheckboxRef}
                   type="checkbox"
+                  aria-label="Alternar seleção de todos os produtos desta página"
+                  title="Alternar seleção de todos os produtos desta página"
                   className="w-4 h-4 cursor-pointer accent-blue-600"
                   checked={allOnPageSelected}
                   onChange={toggleAll}
                 />
               </th>
               <th
-                className="p-4 font-semibold w-40 bg-gray-100 cursor-pointer hover:bg-slate-200 transition-colors group"
-                onClick={handleSortByBarcode}
+                scope="col"
+                aria-sort={currentSort === "asc" ? "ascending" : currentSort === "desc" ? "descending" : "none"}
+                className="w-40 bg-blue-50 p-0 font-semibold"
               >
-                <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleSortByBarcode}
+                  aria-label={`Ordenar por código de barras${currentSort === "asc" ? ", crescente" : currentSort === "desc" ? ", decrescente" : ""}`}
+                  className="flex min-h-12 w-full items-center gap-1 px-4 py-3 text-left transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+                >
                   Cód. Barras
-                  <span className="text-slate-400 font-bold text-lg">
-                    {currentSort === "asc"
-                      ? "↑"
-                      : currentSort === "desc"
-                        ? "↓"
-                        : "↕"}
+                  <span aria-hidden="true" className="text-lg font-bold text-slate-400">
+                    {currentSort === "asc" ? "↑" : currentSort === "desc" ? "↓" : "↕"}
                   </span>
-                </div>
+                </button>
               </th>
-              <th className="p-4 font-semibold w-auto bg-gray-100">
+              <th scope="col" className="w-auto bg-blue-50 p-4 font-semibold">
                 Descrição
               </th>
-              <th className="p-4 font-semibold w-36 bg-gray-100">NCM</th>
-              <th className="p-4 font-semibold w-32 bg-gray-100">Marca</th>
-              <th className="p-4 font-semibold w-40 bg-gray-100">Categoria</th>
-              <th className="p-4 font-semibold w-40 bg-gray-100">
+              <th scope="col" className="w-36 bg-blue-50 p-4 font-semibold">NCM</th>
+              <th scope="col" className="w-32 bg-blue-50 p-4 font-semibold">Marca</th>
+              <th scope="col" className="w-40 bg-blue-50 p-4 font-semibold">Categoria</th>
+              <th scope="col" className="w-40 bg-blue-50 p-4 font-semibold">
                 Subcategoria
               </th>
-              <th className="p-4 font-semibold w-20 text-center bg-gray-100">
+              <th scope="col" className="w-20 bg-blue-50 p-4 text-center font-semibold">
                 Ações
               </th>
             </tr>
@@ -437,7 +574,7 @@ export default function ProductTable({
                 <ProductRow
                   key={produto.id}
                   produto={produto}
-                  isSelected={selectAllPages || selectedIds.has(produto.id)}
+                  isSelected={isProductSelected(produto.id)}
                   onToggle={toggleOne}
                 />
               ))

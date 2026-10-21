@@ -8,6 +8,11 @@ export interface BulkPayload {
   selectAllFilters?: {
     categoriaFiltro: string | null;
     termoBusca: string | null;
+    statusFiltro?: string | null;
+    marcaFiltro?: string | null;
+    subcategoriaFiltro?: string | null;
+    semNcm?: boolean;
+    excludeIds?: number[];
   };
   categoria?: string;
   marca?: string;

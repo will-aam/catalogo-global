@@ -57,7 +57,9 @@ function StatCard({
 export default async function PainelPage() {
   const today = dateKey(new Date());
   const activityWindowStart = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-  const [totalProdutos, revisoesSalvas, revisoesPorOrigem, ncmPreenchido, categoriaPreenchida, subcategoriaPreenchida, marcaPreenchida, pendentes, produtosRevisados, atividadePorDia, camposConfirmados, historicoRecente, groqRequests, groqSuccesses, groqRateLimits, groqTokens, groqRecent] = await Promise.all([
+  const todayStart = new Date(`${today}T00:00:00-03:00`);
+  const lastHourStart = new Date(Date.now() - 60 * 60 * 1000);
+  const [totalProdutos, revisoesSalvas, revisoesPorOrigem, ncmPreenchido, categoriaPreenchida, subcategoriaPreenchida, marcaPreenchida, pendentes, produtosRevisados, atividadePorDia, camposConfirmados, historicoRecente, groqRequests, groqSuccesses, groqRateLimits, groqTokens, groqRecent, groqTodayRequests, groqTodaySuccesses, groqTodayRateLimits, groqTodayTokens, groqLastHourTokens] = await Promise.all([
     prisma.produtoGlobal.count(),
     prisma.historicoClassificacao.count(),
     prisma.historicoClassificacao.groupBy({
@@ -130,6 +132,17 @@ export default async function PainelPage() {
         errorMessage: true,
       },
     }),
+    prisma.groqRequestLog.count({ where: { createdAt: { gte: todayStart } } }),
+    prisma.groqRequestLog.count({ where: { createdAt: { gte: todayStart }, statusCode: { gte: 200, lt: 300 } } }),
+    prisma.groqRequestLog.count({ where: { createdAt: { gte: todayStart }, statusCode: 429 } }),
+    prisma.groqRequestLog.aggregate({
+      where: { createdAt: { gte: todayStart } },
+      _sum: { inputNonCachedTokens: true, outputTokens: true },
+    }),
+    prisma.groqRequestLog.aggregate({
+      where: { createdAt: { gte: lastHourStart } },
+      _sum: { inputNonCachedTokens: true, outputTokens: true },
+    }),
   ]);
 
   const byOrigin = new Map(
@@ -156,6 +169,14 @@ export default async function PainelPage() {
   ];
   const confirmedFieldCount = camposConfirmados[0]?.total || 0;
   const groqTotalTokens = (groqTokens._sum.inputTokens || 0) + (groqTokens._sum.outputTokens || 0);
+  const groqTodayTotalTokens = (groqTodayTokens._sum.inputNonCachedTokens || 0) + (groqTodayTokens._sum.outputTokens || 0);
+  const groqLastHourTotalTokens = (groqLastHourTokens._sum.inputNonCachedTokens || 0) + (groqLastHourTokens._sum.outputTokens || 0);
+  const groqPublicDailyReference = 200_000;
+  const groqDailyPercent = Math.min(100, Math.round((groqTodayTotalTokens / groqPublicDailyReference) * 100));
+  const averageTokensPerSuccessToday = groqTodaySuccesses ? groqTodayTotalTokens / groqTodaySuccesses : 0;
+  const estimatedAuditsRemaining = averageTokensPerSuccessToday
+    ? Math.max(0, Math.floor((groqPublicDailyReference - groqTodayTotalTokens) / averageTokensPerSuccessToday))
+    : 0;
 
   return (
     <div className="min-h-full bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
@@ -190,6 +211,31 @@ export default async function PainelPage() {
             <StatCard label="Limite atingido" value={groqRateLimits} detail="Respostas HTTP 429" accent="bg-rose-500" />
             <StatCard label="Tokens processados" value={groqTotalTokens} detail={`${(groqTokens._sum.inputCachedTokens || 0).toLocaleString("pt-BR")} tokens de entrada em cache`} accent="bg-violet-500" />
           </div>
+          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Consumo de hoje</h3>
+                <p className="mt-1 text-xs text-slate-500">Estimativa baseada nos registros deste catálogo.</p>
+              </div>
+              <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">Referência pública: 200 mil tokens/dia</span>
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div><p className="text-xs text-slate-500">Tokens hoje</p><p className="mt-1 text-xl font-bold tabular-nums text-slate-950">{groqTodayTotalTokens.toLocaleString("pt-BR")}</p></div>
+              <div><p className="text-xs text-slate-500">Chamadas hoje</p><p className="mt-1 text-xl font-bold tabular-nums text-slate-950">{groqTodayRequests.toLocaleString("pt-BR")}</p><p className="text-[11px] text-slate-400">{groqTodaySuccesses.toLocaleString("pt-BR")} concluídas</p></div>
+              <div><p className="text-xs text-slate-500">Limites atingidos hoje</p><p className="mt-1 text-xl font-bold tabular-nums text-rose-700">{groqTodayRateLimits.toLocaleString("pt-BR")}</p></div>
+              <div><p className="text-xs text-slate-500">Tokens na última hora</p><p className="mt-1 text-xl font-bold tabular-nums text-slate-950">{groqLastHourTotalTokens.toLocaleString("pt-BR")}</p></div>
+            </div>
+            <div className="mt-4">
+              <div className="mb-1.5 flex items-center justify-between text-xs text-slate-500">
+                <span>{groqDailyPercent}% da referência diária registrada</span>
+                <span>~{estimatedAuditsRemaining.toLocaleString("pt-BR")} auditorias restantes, pela média de hoje</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Consumo diário estimado da Groq" aria-valuemin={0} aria-valuemax={100} aria-valuenow={groqDailyPercent}>
+                <div className={`h-full rounded-full ${groqDailyPercent >= 85 ? "bg-rose-500" : groqDailyPercent >= 65 ? "bg-amber-500" : "bg-violet-500"}`} style={{ width: `${groqDailyPercent}%` }} />
+              </div>
+              <p className="mt-2 text-[11px] text-slate-400">Os limites variam por organização. Registros de outras aplicações e o limite de tokens por minuto podem alterar a disponibilidade real; confira a página Limits da Groq.</p>
+            </div>
+          </article>
           {groqRecent.length > 0 && (
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-100 px-5 py-3">

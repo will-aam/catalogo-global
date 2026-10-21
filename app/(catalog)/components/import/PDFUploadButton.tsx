@@ -167,7 +167,10 @@ export default function PDFUploadButton() {
 
       {/* O ECRÃ DE TRIAGEM (MODAL) */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div
+          data-import-modal="open"
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+        >
           <div className="bg-white w-full max-w-6xl h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Cabeçalho do Modal */}
             <div className="bg-slate-100 p-4 border-b border-slate-200 flex justify-between items-center">
@@ -320,7 +323,10 @@ export default function PDFUploadButton() {
 
       {/* MODAL DE FEEDBACK (substitui alert()) — só fecha pelo X ou botão OK */}
       {feedback && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+        <div
+          data-import-modal="open"
+          className="fixed inset-0 z-[1000] flex items-center justify-center p-4"
+        >
           {/* Backdrop SEM onClick — clicar fora não fecha */}
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">

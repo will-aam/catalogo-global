@@ -166,7 +166,10 @@ export default function XMLUploadButton() {
 
       {/* MODAL DE FEEDBACK (substitui alert()) — só fecha pelo X ou botão OK */}
       {feedback && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+        <div
+          data-import-modal="open"
+          className="fixed inset-0 z-[1000] flex items-center justify-center p-4"
+        >
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div

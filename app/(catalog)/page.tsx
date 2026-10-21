@@ -1,6 +1,6 @@
 // app/(catalog)/page.tsx
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
+import { Prisma, StatusAuditoria } from "@prisma/client";
 import CatalogHeader from "./components/CatalogHeader";
 import CatalogFilters from "./components/CatalogFilters";
 import ProductTable from "./components/ProductTable/ProductTable";
@@ -17,6 +17,7 @@ export default async function CatalogoPage({
     marca?: string;
     subcategoria?: string;
     semNcm?: string;
+    status?: string;
   }>;
 }) {
   const resolvedParams = await searchParams;
@@ -24,6 +25,11 @@ export default async function CatalogoPage({
   const marcaFiltro = resolvedParams.marca;
   const subcategoriaFiltro = resolvedParams.subcategoria;
   const semNcm = resolvedParams.semNcm;
+  const statusFiltro = Object.values(StatusAuditoria).includes(
+    resolvedParams.status as StatusAuditoria,
+  )
+    ? (resolvedParams.status as StatusAuditoria)
+    : undefined;
   const termoBusca = resolvedParams.q;
   const sortParam = resolvedParams.sort;
   const page = parseInt(resolvedParams.page || "1");
@@ -57,6 +63,11 @@ export default async function CatalogoPage({
       ],
     });
   }
+
+  const filtersWithoutStatus: Prisma.ProdutoGlobalWhereInput =
+    conditions.length > 0 ? { AND: [...conditions] } : {};
+
+  if (statusFiltro) conditions.push({ status_auditoria: statusFiltro });
 
   const where: Prisma.ProdutoGlobalWhereInput =
     conditions.length > 0 ? { AND: conditions } : {};
@@ -100,6 +111,7 @@ export default async function CatalogoPage({
     categoriasResumo,
     marcasResumo,
     subcategoriasResumo,
+    statusResumo,
     totalItens,
     produtos,
   ] = await Promise.all([
@@ -115,6 +127,12 @@ export default async function CatalogoPage({
       orderBy: { marca: "asc" },
     }),
     subcategoriasQuery,
+    prisma.produtoGlobal.groupBy({
+      by: ["status_auditoria"],
+      where: filtersWithoutStatus,
+      _count: { id: true },
+      orderBy: { status_auditoria: "asc" },
+    }),
     prisma.produtoGlobal.count({ where }),
     prisma.produtoGlobal.findMany({
       where,
@@ -146,6 +164,15 @@ export default async function CatalogoPage({
     count: s._count.id,
   }));
 
+  const statusOptions = [
+    { value: "PENDENTE", label: "Pendente" },
+    { value: "REVISADO", label: "Revisado" },
+    { value: "REJEITADO", label: "Rejeitado" },
+  ].map((option) => ({
+    ...option,
+    count: statusResumo.find((status) => status.status_auditoria === option.value as StatusAuditoria)?._count.id || 0,
+  }));
+
   return (
     <main
       className="bg-slate-100 p-4 relative h-full min-h-0 overflow-hidden grid gap-3"
@@ -160,19 +187,30 @@ export default async function CatalogoPage({
         categorias={categoriasOptions}
         marcas={marcasOptions}
         subcategorias={subcategoriasOptions}
+        status={statusOptions}
       />
 
       <section className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col min-h-0 overflow-hidden">
-        <div className="px-4 py-2 flex justify-between items-center shrink-0">
+        <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-2">
+          <p className="text-xs font-medium text-slate-500" aria-live="polite">
+            {totalItens === 0
+              ? "Nenhum produto neste resultado"
+              : `Exibindo ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, totalItens)} de ${totalItens.toLocaleString("pt-BR")} produtos`}
+          </p>
           <PaginationControls currentPage={page} totalPages={totalPages} />
         </div>
 
         <ProductTable
+          key={JSON.stringify(resolvedParams)}
           produtos={produtos}
           totalItemsEncontrados={totalItens}
           categoriaFiltro={categoriaFiltro}
+          marcaFiltro={marcaFiltro}
+          subcategoriaFiltro={subcategoriaFiltro}
+          semNcm={semNcm === "true"}
           termoBusca={termoBusca}
           currentSort={sortParam}
+          statusFiltro={statusFiltro}
         />
 
         <div className="px-4 py-2 flex justify-center sm:justify-end shrink-0 border-t border-slate-100">

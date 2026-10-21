@@ -2,13 +2,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { StatusAuditoria } from "@prisma/client";
 import * as XLSX from "xlsx";
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const categoriaFiltro = searchParams.get("categoriaFiltro");
+    const marcaFiltro = searchParams.get("marcaFiltro");
+    const subcategoriaFiltro = searchParams.get("subcategoriaFiltro");
+    const semNcm = searchParams.get("semNcm") === "true";
     const termoBusca = searchParams.get("termoBusca");
+    const statusFiltro = searchParams.get("statusFiltro");
     const format = searchParams.get("format") || "csv"; // csv ou xlsx
 
     let whereClause: Prisma.ProdutoGlobalWhereInput = {};
@@ -21,6 +26,12 @@ export async function GET(request: Request) {
       conditions.push({ categoria: categoriaFiltro });
     }
 
+    if (marcaFiltro) conditions.push({ marca: marcaFiltro });
+    if (subcategoriaFiltro && categoriaFiltro) {
+      conditions.push({ subcategoria: subcategoriaFiltro });
+    }
+    if (semNcm) conditions.push({ OR: [{ ncm: null }, { ncm: "" }] });
+
     if (termoBusca) {
       conditions.push({
         OR: [
@@ -28,6 +39,10 @@ export async function GET(request: Request) {
           { codigo_barras: { contains: termoBusca } },
         ],
       });
+    }
+
+    if (Object.values(StatusAuditoria).includes(statusFiltro as StatusAuditoria)) {
+      conditions.push({ status_auditoria: statusFiltro as StatusAuditoria });
     }
 
     if (conditions.length > 0) {

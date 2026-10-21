@@ -1,7 +1,7 @@
 // app/api/products/bulk-delete/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
+import { Prisma, StatusAuditoria } from "@prisma/client";
 
 export async function POST(request: Request) {
   try {
@@ -12,13 +12,27 @@ export async function POST(request: Request) {
     // Se o usuário selecionou "Todos os X itens" de todas as páginas
     if (selectAllFilters) {
       const conditions: Prisma.ProdutoGlobalWhereInput[] = [];
-      const { categoriaFiltro, termoBusca } = selectAllFilters;
+      const {
+        categoriaFiltro,
+        termoBusca,
+        statusFiltro,
+        marcaFiltro,
+        subcategoriaFiltro,
+        semNcm,
+        excludeIds,
+      } = selectAllFilters;
 
       if (categoriaFiltro === "SEM_CATEGORIA") {
         conditions.push({ OR: [{ categoria: null }, { categoria: "" }] });
       } else if (categoriaFiltro) {
         conditions.push({ categoria: categoriaFiltro });
       }
+
+      if (marcaFiltro) conditions.push({ marca: marcaFiltro });
+      if (subcategoriaFiltro && categoriaFiltro) {
+        conditions.push({ subcategoria: subcategoriaFiltro });
+      }
+      if (semNcm) conditions.push({ OR: [{ ncm: null }, { ncm: "" }] });
 
       if (termoBusca) {
         conditions.push({
@@ -27,6 +41,13 @@ export async function POST(request: Request) {
             { codigo_barras: { contains: termoBusca } },
           ],
         });
+      }
+
+      if (Object.values(StatusAuditoria).includes(statusFiltro as StatusAuditoria)) {
+        conditions.push({ status_auditoria: statusFiltro as StatusAuditoria });
+      }
+      if (Array.isArray(excludeIds) && excludeIds.length > 0) {
+        conditions.push({ id: { notIn: excludeIds } });
       }
 
       whereClause = conditions.length > 0 ? { AND: conditions } : {};

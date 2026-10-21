@@ -127,6 +127,7 @@ export default function ProductRow({
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState(produto);
   const [isLoading, setIsLoading] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [isDeleted, setIsDeleted] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const router = useRouter();
@@ -253,6 +254,7 @@ export default function ProductRow({
   // ─── SALVAR ─────────────────────────────────────────────────
   const handleSave = async () => {
     setIsLoading(true);
+    setSaveError("");
     try {
       const res = await fetch(`/api/products/${produto.id}`, {
         method: "PUT",
@@ -262,9 +264,12 @@ export default function ProductRow({
       if (res.ok) {
         setIsEditing(false);
         router.refresh();
+      } else {
+        const result = await res.json().catch(() => null);
+        setSaveError(result?.error || "Não foi possível salvar as alterações. Confira os dados e tente novamente.");
       }
     } catch {
-      alert("Erro ao salvar");
+      setSaveError("Falha de conexão ao salvar. Suas alterações continuam no formulário.");
     } finally {
       setIsLoading(false);
     }
@@ -298,175 +303,77 @@ export default function ProductRow({
   if (isEditing) {
     return (
       <>
-        <tr className="bg-blue-50/50 transition-colors">
-          <td className="p-2 text-center">
-            <input
-              type="checkbox"
-              checked={isSelected}
-              readOnly
-              disabled
-              className="w-4 h-4 cursor-not-allowed opacity-50 accent-blue-600"
-            />
-          </td>
+        <tr className="bg-slate-50 transition-colors">
+          <td colSpan={8} className="p-3 sm:p-4">
+            <section className="overflow-visible rounded-2xl border border-blue-200 bg-white shadow-sm ring-1 ring-blue-100">
+              <header className="flex flex-col gap-2 border-b border-blue-100 bg-blue-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-900">Editar produto</h3>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${produto.status_auditoria === "REVISADO" ? "bg-emerald-100 text-emerald-800" : produto.status_auditoria === "REJEITADO" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800"}`}>
+                      {produto.status_auditoria === "REVISADO" ? "Revisado" : produto.status_auditoria === "REJEITADO" ? "Rejeitado" : "Pendente"}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-slate-600">{produto.descricao || "Produto sem descrição"}</p>
+                </div>
+                <p className="shrink-0 text-[11px] font-medium text-slate-500">Edite os dados e salve para atualizar o catálogo</p>
+              </header>
 
-          {/* CÓDIGO DE BARRAS COM BUSCA GTIN */}
-          <td className="p-2">
-            <div className="flex items-center gap-1">
-              <input
-                className="w-full p-1.5 border rounded text-xs font-mono outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-                value={editData.codigo_barras || ""}
-                onChange={(e) =>
-                  setEditData({ ...editData, codigo_barras: e.target.value })
-                }
-              />
-              <button
-                type="button"
-                onClick={handleGtinSearch}
-                disabled={gtinLoading}
-                className="shrink-0 p-1.5 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100 transition-colors disabled:opacity-50"
-                title="Preencher dados usando o Código de Barras"
-              >
-                {gtinLoading ? (
-                  <svg
-                    className="animate-spin h-3.5 w-3.5"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                ) : (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M3 5v14" />
-                    <path d="M8 5v14" />
-                    <path d="M12 5v14" />
-                    <path d="M17 5v14" />
-                    <path d="M21 5v14" />
-                  </svg>
-                )}
-              </button>
-            </div>
-          </td>
+              <div className="grid gap-x-4 gap-y-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-3">
+                <label className="block min-w-0 space-y-1.5">
+                  <span className="text-xs font-semibold text-slate-700">Código de barras</span>
+                  <span className="flex gap-2">
+                    <input aria-label="Código de barras" className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={editData.codigo_barras || ""} onChange={(e) => setEditData({ ...editData, codigo_barras: e.target.value })} />
+                    <button type="button" onClick={handleGtinSearch} disabled={gtinLoading} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-50" title="Preencher dados usando o código de barras">
+                      {gtinLoading ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-indigo-300 border-t-indigo-700" /> : <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 5v14M8 5v14M12 5v14M17 5v14M21 5v14" /></svg>}
+                      Buscar
+                    </button>
+                  </span>
+                </label>
 
-          <td className="p-2">
-            <input
-              className="w-full p-1.5 border rounded text-xs font-medium outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-              value={editData.descricao || ""}
-              onChange={(e) =>
-                setEditData({ ...editData, descricao: e.target.value })
-              }
-            />
-          </td>
+                <label className="block min-w-0 space-y-1.5 sm:col-span-2 xl:col-span-2">
+                  <span className="text-xs font-semibold text-slate-700">Descrição</span>
+                  <input aria-label="Descrição" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={editData.descricao || ""} onChange={(e) => setEditData({ ...editData, descricao: e.target.value })} />
+                </label>
 
-          {/* NCM COM AUTOSUGGEST + LUPA (BUSCA FUZZY) */}
-          <td className="p-2">
-            <div className="flex items-center gap-1">
-              <AutocompleteInput
-                type="ncm"
-                className="w-full p-1.5 border rounded text-xs font-mono outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-                value={editData.ncm || ""}
-                onChange={(val) =>
-                  setEditData({ ...editData, ncm: val.replace(/\D/g, "") })
-                }
-                placeholder="33051000"
-              />
-              <button
-                id="ncm-search-btn"
-                type="button"
-                onClick={openNcmSearch}
-                className="shrink-0 p-1.5 bg-amber-50 text-amber-600 rounded hover:bg-amber-100 transition-colors"
-                title="Buscar NCM pela descrição do produto"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="m21 21-4.3-4.3" />
-                </svg>
-              </button>
-            </div>
-          </td>
+                <label className="block min-w-0 space-y-1.5">
+                  <span className="text-xs font-semibold text-slate-700">NCM</span>
+                  <span className="flex gap-2">
+                    <AutocompleteInput type="ncm" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={editData.ncm || ""} onChange={(val) => setEditData({ ...editData, ncm: val.replace(/\D/g, "") })} placeholder="Ex.: 33051000" />
+                    <button id="ncm-search-btn" type="button" onClick={openNcmSearch} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 transition hover:bg-amber-100" title="Buscar NCM pela descrição do produto" aria-label="Buscar NCM pela descrição">
+                      <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                      Buscar
+                    </button>
+                  </span>
+                </label>
 
-          {/* MARCA COM AUTOSUGGEST */}
-          <td className="p-2">
-            <AutocompleteInput
-              type="marca"
-              className="w-full p-1.5 border rounded text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-              value={editData.marca || ""}
-              onChange={(val) => setEditData({ ...editData, marca: val })}
-            />
-          </td>
+                <label className="block min-w-0 space-y-1.5">
+                  <span className="text-xs font-semibold text-slate-700">Marca</span>
+                  <AutocompleteInput type="marca" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={editData.marca || ""} onChange={(val) => setEditData({ ...editData, marca: val })} placeholder="Digite ou escolha uma marca" />
+                </label>
 
-          {/* CATEGORIA COM AUTOSUGGEST */}
-          <td className="p-2">
-            <AutocompleteInput
-              type="categoria"
-              className="w-full p-1.5 border rounded text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-              value={editData.categoria || ""}
-              onChange={(val) => setEditData({ ...editData, categoria: val })}
-            />
-          </td>
+                <label className="block min-w-0 space-y-1.5">
+                  <span className="text-xs font-semibold text-slate-700">Categoria</span>
+                  <AutocompleteInput type="categoria" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={editData.categoria || ""} onChange={(val) => setEditData({ ...editData, categoria: val })} placeholder="Digite ou escolha uma categoria" />
+                </label>
 
-          {/* SUBCATEGORIA COM AUTOSUGGEST */}
-          <td className="p-2">
-            <AutocompleteInput
-              type="subcategoria"
-              className="w-full p-1.5 border rounded text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-              value={editData.subcategoria || ""}
-              onChange={(val) =>
-                setEditData({ ...editData, subcategoria: val })
-              }
-            />
-          </td>
+                <label className="block min-w-0 space-y-1.5">
+                  <span className="text-xs font-semibold text-slate-700">Subcategoria</span>
+                  <AutocompleteInput type="subcategoria" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={editData.subcategoria || ""} onChange={(val) => setEditData({ ...editData, subcategoria: val })} placeholder="Digite ou escolha uma subcategoria" />
+                </label>
+              </div>
 
-          <td className="p-2 text-center">
-            <div className="flex justify-center gap-2 flex-wrap">
-              <button
-                onClick={handleSave}
-                disabled={isLoading}
-                className="bg-green-100 text-green-700 px-3 py-1.5 rounded font-bold text-xs hover:bg-green-200 transition-colors shadow-sm flex items-center gap-1"
-              >
-                {isLoading ? "Salvando..." : "✓ Salvar"}
-              </button>
-              <button
-                onClick={() => setIsEditing(false)}
-                className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded font-bold text-xs hover:bg-gray-200 transition-colors shadow-sm flex items-center gap-1"
-              >
-                ✕ Cancelar
-              </button>
-            </div>
+              {saveError && <p role="alert" className="mx-4 mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 sm:mx-5">{saveError}</p>}
+              <footer className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50/80 px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
+                <button type="button" onClick={() => { setEditData(produto); setIsEditing(false); }} disabled={isLoading} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50">Cancelar</button>
+                <button type="button" onClick={handleSave} disabled={isLoading || gtinLoading} className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
+                  {isLoading && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
+                  {isLoading ? "Salvando alterações…" : "Salvar alterações"}
+                </button>
+              </footer>
+            </section>
           </td>
         </tr>
-
         {/* DROPDOWN DE BUSCA NCM (FUZZY POR DESCRIÇÃO) */}
         {ncmSearchOpen && (
           <tr>
@@ -585,13 +492,17 @@ export default function ProductRow({
   return (
     <>
       <tr
-        className={`hover:bg-gray-50 transition-colors border-b ${
-          isSelected ? "bg-blue-50/30" : ""
+        className={`border-b border-slate-100 transition-colors ${
+          isSelected
+            ? "bg-blue-100/70 hover:bg-blue-100"
+            : "odd:bg-white even:bg-slate-50/70 hover:bg-blue-50"
         }`}
       >
         <td className="p-2 sm:p-4 text-center whitespace-nowrap">
           <input
             type="checkbox"
+            aria-label={`Selecionar produto ${produto.descricao || produto.codigo_barras || produto.id}`}
+            title={`Selecionar produto ${produto.descricao || produto.codigo_barras || produto.id}`}
             className="w-4 h-4 cursor-pointer accent-blue-600"
             checked={isSelected}
             onChange={() => onToggle(produto.id)}
@@ -638,10 +549,10 @@ export default function ProductRow({
           <span
             className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${
               produto.status_auditoria === "REVISADO"
-                ? "bg-emerald-50 text-emerald-700"
+              ? "bg-emerald-100 text-emerald-800 ring-1 ring-inset ring-emerald-200"
                 : produto.status_auditoria === "REJEITADO"
-                  ? "bg-red-50 text-red-700"
-                  : "bg-amber-50 text-amber-700"
+                  ? "bg-rose-100 text-rose-800 ring-1 ring-inset ring-rose-200"
+                  : "bg-amber-100 text-amber-800 ring-1 ring-inset ring-amber-200"
             }`}
           >
             {produto.status_auditoria === "REVISADO"
@@ -656,33 +567,42 @@ export default function ProductRow({
           className="p-2 sm:p-4 text-gray-500 font-mono text-sm truncate max-w-36 whitespace-nowrap"
           title={produto.ncm || undefined}
         >
-          {produto.ncm || "-"}
+          {produto.ncm ? (
+            <span className="text-blue-800">{produto.ncm}</span>
+          ) : (
+            <span className="inline-flex rounded-md bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">
+              Sem NCM
+            </span>
+          )}
         </td>
 
         <td
           className="p-2 sm:p-4 text-gray-600 truncate max-w-30"
           title={produto.marca || undefined}
         >
-          {produto.marca || "-"}
+          {produto.marca || (
+            <span className="text-xs font-medium text-amber-700">Sem marca</span>
+          )}
         </td>
 
         <td className="p-2 sm:p-4 truncate max-w-37.5">
-          <span className="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-md text-xs font-medium border truncate inline-block max-w-full">
-            {produto.categoria || "Sem Categoria"}
+          <span className={`inline-block max-w-full truncate rounded-md border px-2.5 py-1 text-xs font-semibold ${produto.categoria ? "border-indigo-100 bg-indigo-50 text-indigo-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+            {produto.categoria || "Sem categoria"}
           </span>
         </td>
 
         <td className="p-2 sm:p-4 truncate max-w-37.5">
-          <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-xs font-medium border truncate inline-block max-w-full">
-            {produto.subcategoria || "—"}
+          <span className={`inline-block max-w-full truncate rounded-md border px-2.5 py-1 text-xs font-semibold ${produto.subcategoria ? "border-cyan-100 bg-cyan-50 text-cyan-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+            {produto.subcategoria || "Sem subcategoria"}
           </span>
         </td>
 
         <td className="p-2 sm:p-4 whitespace-nowrap">
           <div className="flex justify-center gap-1 sm:gap-2">
             <button
-              onClick={() => setIsEditing(true)}
-              className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+              onClick={() => { setEditData(produto); setSaveError(""); setIsEditing(true); }}
+              aria-label={`Editar ${produto.descricao}`}
+              className="rounded-lg bg-blue-50 p-2 text-blue-700 transition-colors hover:bg-blue-100 focus-visible:outline-blue-500"
               title="Editar Produto"
             >
               <svg
@@ -703,7 +623,8 @@ export default function ProductRow({
 
             <button
               onClick={() => setShowDeleteModal(true)}
-              className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+              aria-label={`Excluir ${produto.descricao}`}
+              className="rounded-lg bg-rose-50 p-2 text-rose-700 transition-colors hover:bg-rose-100 focus-visible:outline-rose-500"
               title="Excluir Produto"
             >
               <svg

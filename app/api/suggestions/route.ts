@@ -55,9 +55,50 @@ class TavilySearchError extends Error {
 }
 
 class GroqApiError extends Error {
-  constructor(readonly statusCode: number) {
+  constructor(
+    readonly statusCode: number,
+    readonly rateLimit: GroqRateLimit,
+  ) {
     super(`Groq API request failed (${statusCode}).`);
   }
+}
+
+type GroqRateLimit = {
+  remainingTokens: number | null;
+  resetTokensMs: number | null;
+  remainingRequests: number | null;
+  resetRequestsMs: number | null;
+  retryAfterMs: number | null;
+};
+
+function parseDurationMs(value: string | null, bareNumberIsSeconds = false) {
+  if (!value) return null;
+  const bareNumber = Number(value);
+  if (Number.isFinite(bareNumber)) {
+    return Math.max(0, Math.ceil(bareNumber * (bareNumberIsSeconds ? 1000 : 1)));
+  }
+
+  const parts = [...value.matchAll(/(\d+(?:\.\d+)?)(ms|h|m|s)/g)];
+  if (!parts.length) return null;
+  const multipliers: Record<string, number> = { h: 3_600_000, m: 60_000, s: 1_000, ms: 1 };
+  return Math.max(0, Math.ceil(parts.reduce((total, part) => total + Number(part[1]) * multipliers[part[2]], 0)));
+}
+
+function readGroqRateLimit(headers: Headers): GroqRateLimit {
+  const numberHeader = (name: string) => {
+    const value = headers.get(name);
+    if (value === null) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  return {
+    remainingTokens: numberHeader("x-ratelimit-remaining-tokens"),
+    resetTokensMs: parseDurationMs(headers.get("x-ratelimit-reset-tokens")),
+    remainingRequests: numberHeader("x-ratelimit-remaining-requests"),
+    resetRequestsMs: parseDurationMs(headers.get("x-ratelimit-reset-requests")),
+    retryAfterMs: parseDurationMs(headers.get("retry-after"), true),
+  };
 }
 
 async function buscarNaWeb(query: string): Promise<WebSource[]> {
@@ -69,7 +110,7 @@ async function buscarNaWeb(query: string): Promise<WebSource[]> {
       query: query.slice(0, 390),
       search_depth: "fast",
       topic: "general",
-      max_results: 5,
+      max_results: 3,
       include_answer: false,
       include_raw_content: false,
       include_usage: true,
@@ -90,7 +131,7 @@ async function buscarNaWeb(query: string): Promise<WebSource[]> {
 
   return result.results.map((item) => ({
     ...item,
-    content: item.content.slice(0, 1200),
+    content: item.content.slice(0, 700),
   }));
 }
 
@@ -429,7 +470,7 @@ export async function POST(request: Request) {
       candidatos.unshift(ncmAtualOficial);
     }
     const exemplosPorCodigo = historicoSimilar.filter(({ barcodeMatch }) => barcodeMatch).map(({ entry }) => ({ categoria: entry.categoria, subcategoria: entry.subcategoria, marca: entry.marca, ncm: entry.ncm }));
-    const prompt = `Audite este produto brasileiro. Código de barras/GTIN: ${codigoBarras || "não informado"}. Descrição cadastrada: ${descricao.trim()}. Valores atuais: ${JSON.stringify(valoresAtuais)}. NCM atual na tabela oficial: ${JSON.stringify(ncmAtualOficial)}.\n\nResultados da pesquisa Tavily na internet: ${JSON.stringify(fontesWeb)}. Use os resultados para identificar produto e marca; se não houver evidência suficiente para a marca, deixe-a sem sugestão.\n\nHistórico de decisões humanas confirmadas em produtos com descrição/categoria/subcategoria semelhantes: ${JSON.stringify(padroesHistorico)}. Revisões anteriores para este mesmo código de barras: ${JSON.stringify(exemplosPorCodigo)}. Use o histórico somente como evidência auxiliar, nunca como regra ou prova. Os itens são correções confirmadas, mas podem ser exceções ou ter sido substituídos; avalie cada produto pelas características próprias e pela fonte oficial. Não copie NCM de produto parecido sem correspondência técnica.\n\nPara categoria vazia, classifique pela descrição do produto e escolha a categoria existente mais adequada desta lista: ${JSON.stringify(categorias)}. A categoria pode ser sugerida a partir da descrição; não dependa de a pesquisa web mencionar uma categoria. Se nenhuma categoria existente servir, sugira uma categoria nova, clara e curta. Quando o produto for identificável, não deixe categoria vazia e use a ação preencher. Se a categoria atual estiver preenchida e for adequada, preserve-a; só corrija com uma alternativa melhor justificada. Para subcategoria, escolha uma opção existente compatível com a categoria dentre ${JSON.stringify(subcategorias)} ou sugira uma nova quando necessário; mantenha null/sem_sugestao se não houver segurança.\n\nA lista abaixo foi consultada diretamente na tabela oficial Prisma: escolha exclusivamente um código dessa lista para sugerir; se nenhum for adequado, use null. Lista oficial: ${JSON.stringify(candidatos)}. Marcas existentes: ${JSON.stringify(marcas)}. Para marca vazia, escolha uma marca somente quando houver evidência nos resultados web ou na descrição. Preserve valores atuais corretos; sugira apenas campos vazios ou incorretos. Compare NCM atual, lista oficial e evidências web. Use confirmado, corrigir, preencher ou sem_sugestao conforme o caso. Não invente códigos. Em evidenciaWeb resuma os achados dos resultados recebidos.`;
+    const prompt = `Audite este produto brasileiro. Código de barras/GTIN: ${codigoBarras || "não informado"}. Descrição cadastrada: ${descricao.trim()}. Valores atuais: ${JSON.stringify(valoresAtuais)}. NCM atual na tabela oficial: ${JSON.stringify(ncmAtualOficial)}.\n\nResultados da pesquisa Tavily: ${JSON.stringify(fontesWeb)}. Use-os para identificar produto e marca; sem evidência suficiente, deixe a marca sem sugestão.\n\nHistórico humano semelhante: ${JSON.stringify(padroesHistorico)}. Revisões deste código de barras: ${JSON.stringify(exemplosPorCodigo)}. Use o histórico apenas como apoio, nunca como regra/prova. Avalie as características próprias do produto e a fonte oficial; não copie NCM sem correspondência técnica.\n\nPara categoria vazia, escolha a categoria existente mais adequada desta lista: ${JSON.stringify(categorias)}. Não dependa de a web mencionar a categoria. Se nenhuma servir, sugira uma nova, clara e curta. Se a categoria atual estiver correta, preserve-a; corrija somente com alternativa melhor justificada. Para subcategoria, escolha opção existente compatível com a categoria dentre ${JSON.stringify(subcategorias)}, ou sugira uma nova se necessário; use null quando não houver segurança.\n\nA lista seguinte vem diretamente da tabela oficial Prisma: sugira exclusivamente um código desta lista, ou null. NCMs: ${JSON.stringify(candidatos)}. Marcas existentes: ${JSON.stringify(marcas)}. Para marca vazia, sugira somente com evidência na web ou descrição. Preserve valores atuais corretos e sugira apenas campos vazios/incorretos. Não invente códigos. Escreva evidenciaWeb e justificativa de forma breve, com no máximo duas frases cada.`;
     const groqRequestStartedAt = new Date();
     const groqStartedAtMs = Date.now();
     const modelResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -464,6 +505,7 @@ export async function POST(request: Request) {
     });
     const groqRequestId = modelResponse.headers.get("x-request-id") || `app_${randomUUID()}`;
     const groqDurationSeconds = (Date.now() - groqStartedAtMs) / 1000;
+    const groqRateLimit = readGroqRateLimit(modelResponse.headers);
     if (!modelResponse.ok) {
       const errorBody: unknown = await modelResponse.json().catch(() => null);
       const parsedError = z.object({
@@ -481,7 +523,7 @@ export async function POST(request: Request) {
           ? "Limite de uso da Groq atingido."
           : `A API Groq respondeu com HTTP ${modelResponse.status}.`,
       });
-      throw new GroqApiError(modelResponse.status);
+      throw new GroqApiError(modelResponse.status, groqRateLimit);
     }
 
     const responseBody: unknown = await modelResponse.json();
@@ -519,6 +561,39 @@ export async function POST(request: Request) {
       !valoresAtuais.subcategoria && parsed.subcategoria?.trim()
         ? "preencher"
         : parsed.subcategoriaAcao;
+    const categoriaSugerida = parsed.categoria.trim() || valoresAtuais.categoria;
+    const subcategoriaSugerida = parsed.subcategoria?.trim() || valoresAtuais.subcategoria;
+    const [categoriaExistente, subcategoriaExistente] = await Promise.all([
+      categoriaSugerida
+        ? prisma.produtoGlobal.findFirst({
+            where: { categoria: { equals: categoriaSugerida, mode: "insensitive" } },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      categoriaSugerida && subcategoriaSugerida
+        ? prisma.produtoGlobal.findFirst({
+            where: {
+              categoria: { equals: categoriaSugerida, mode: "insensitive" },
+              subcategoria: { equals: subcategoriaSugerida, mode: "insensitive" },
+            },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+    ]);
+    const categoriaOrigem = !categoriaSugerida
+      ? "sem_sugestao"
+      : categoriaAcaoValidada === "manter"
+        ? "atual"
+        : categoriaExistente
+          ? "existente"
+          : "nova";
+    const subcategoriaOrigem = !subcategoriaSugerida
+      ? "sem_sugestao"
+      : subcategoriaAcaoValidada === "manter"
+        ? "atual"
+        : subcategoriaExistente
+          ? "existente"
+          : "nova";
     const match = parsed.ncmSugerido
       ? candidatos.find(
           (candidate) =>
@@ -538,6 +613,8 @@ export async function POST(request: Request) {
       ...parsed,
       categoriaAcao: categoriaAcaoValidada,
       subcategoriaAcao: subcategoriaAcaoValidada,
+      categoriaOrigem,
+      subcategoriaOrigem,
       ncmSugerido: ncmValido,
       ncmStatus: ncmStatusValidado,
       alternativasNcm: candidatos,
@@ -545,6 +622,12 @@ export async function POST(request: Request) {
       fontesWeb: fontesWeb.map(({ title, url, score }) => ({ title, url, score })),
       padroesHistorico,
       modelo: model,
+      usage: {
+        inputTokens,
+        outputTokens: completion.usage?.completion_tokens || 0,
+        totalTokens: inputTokens + (completion.usage?.completion_tokens || 0),
+      },
+      rateLimit: groqRateLimit,
     });
   } catch (error) {
     console.error("Erro ao classificar produto:", error);
@@ -573,6 +656,7 @@ export async function POST(request: Request) {
                 ? "O limite gratuito da Groq foi atingido. Aguarde a renovação indicada no painel da conta. Nenhuma alteração foi feita no produto."
                 : "O serviço de IA da Groq não conseguiu processar a auditoria. Tente novamente em instantes."
             : "Falha ao processar a classificação do produto. Tente novamente em alguns instantes.",
+        rateLimit: groqError?.rateLimit || null,
       },
       { status: responseStatus },
     );

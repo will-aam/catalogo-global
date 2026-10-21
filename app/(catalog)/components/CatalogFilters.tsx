@@ -16,6 +16,7 @@ function FilterSelect({
   options,
   placeholder,
   disabled = false,
+  className = "",
 }: {
   label: string;
   value: string;
@@ -23,21 +24,28 @@ function FilterSelect({
   options: FilterOption[];
   placeholder: string;
   disabled?: boolean;
+  className?: string;
 }) {
+  const selectId = `filter-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+
   return (
     <div
-      className={`flex flex-col min-w-37.5 flex-1 transition-opacity ${
+      className={`flex min-w-0 flex-col transition-opacity ${className} ${
         disabled ? "opacity-40 pointer-events-none" : ""
       }`}
     >
-      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+      <label
+        htmlFor={selectId}
+        className="mb-1 text-[11px] font-semibold text-slate-600"
+      >
         {label}
       </label>
       <select
+        id={selectId}
         value={value}
         onChange={(e) => onChange(e.target.value || null)}
         disabled={disabled}
-        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')] bg-size-37.5 bg-position-[right_10px_center] bg-no-repeat pr-8 disabled:cursor-not-allowed disabled:bg-slate-50"
+        className="min-h-10 w-full cursor-pointer appearance-none rounded-lg border border-slate-200 bg-white bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')] bg-position-[right_10px_center] bg-no-repeat px-3 py-2 pr-8 text-sm text-slate-700 transition-colors hover:border-slate-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50"
       >
         <option value="">
           {disabled ? "Selecione uma categoria..." : placeholder}
@@ -56,10 +64,12 @@ export default function CatalogFilters({
   categorias,
   marcas,
   subcategorias,
+  status,
 }: {
   categorias: FilterOption[];
   marcas: FilterOption[];
   subcategorias: FilterOption[];
+  status: FilterOption[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -70,6 +80,7 @@ export default function CatalogFilters({
   const currentMarca = searchParams.get("marca") || "";
   const currentSubcategoria = searchParams.get("subcategoria") || "";
   const semNcm = searchParams.get("semNcm") === "true";
+  const currentStatus = searchParams.get("status") || "";
 
   const hasCategoria = !!currentCategoria;
 
@@ -105,7 +116,10 @@ export default function CatalogFilters({
     setParam("semNcm", semNcm ? null : "true");
   };
 
-  const clearAll = () => router.push("/");
+  const clearAll = () => {
+    setSearchTerm("");
+    router.push("/");
+  };
 
   const activeFilters: { key: string; label: string }[] = [];
 
@@ -141,13 +155,24 @@ export default function CatalogFilters({
 
   if (semNcm) activeFilters.push({ key: "semNcm", label: "Sem NCM" });
 
+  if (currentStatus) {
+    const found = status.find((option) => option.value === currentStatus);
+    activeFilters.push({
+      key: "status",
+      label: `Status: ${found?.label || currentStatus}`,
+    });
+  }
+
   const hasFilters = activeFilters.length > 0;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden shrink-0">
-      <div className="p-3 flex flex-wrap items-end gap-3">
-        {/* BUSCA */}
-        <form onSubmit={handleSearch} className="flex gap-1.5 min-w-50 flex-2">
+    <div className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="grid grid-cols-1 items-end gap-3 p-3 sm:grid-cols-2 xl:grid-cols-12">
+        <form
+          onSubmit={handleSearch}
+          aria-label="Buscar produtos"
+          className="flex min-w-0 gap-1.5 sm:col-span-2 xl:col-span-2"
+        >
           <div className="relative flex-1">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -160,23 +185,65 @@ export default function CatalogFilters({
               strokeLinecap="round"
               strokeLinejoin="round"
               className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              aria-hidden="true"
             >
               <circle cx="11" cy="11" r="8" />
               <path d="m21 21-4.3-4.3" />
             </svg>
             <input
               type="text"
+              aria-label="Buscar por descrição ou código de barras"
               placeholder="Buscar produto..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-900 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all placeholder:text-slate-400"
+              className="min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-9 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm("");
+                  if (searchParams.get("q")) setParam("q", null);
+                }}
+                aria-label="Limpar texto da busca"
+                title="Limpar busca"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                <svg
+                  aria-hidden="true"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                >
+                  <path d="m18 6-12 12M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
           <button
             type="submit"
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap"
+            aria-label="Buscar produtos"
+            title="Buscar produtos"
+            className="flex min-h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-700 p-2 text-white shadow-sm transition-colors hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
           >
-            Buscar
+            <svg
+              aria-hidden="true"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-4-4" />
+            </svg>
           </button>
         </form>
 
@@ -186,6 +253,7 @@ export default function CatalogFilters({
           onChange={handleCategoriaChange}
           options={categorias}
           placeholder="Todas as Categorias"
+          className="xl:col-span-2"
         />
 
         <FilterSelect
@@ -195,6 +263,7 @@ export default function CatalogFilters({
           options={subcategorias}
           placeholder="Todas as Subcategorias"
           disabled={!hasCategoria}
+          className="xl:col-span-2"
         />
 
         <FilterSelect
@@ -203,53 +272,58 @@ export default function CatalogFilters({
           onChange={(v) => setParam("marca", v)}
           options={marcas}
           placeholder="Todas as Marcas"
+          className="xl:col-span-2"
         />
 
-        {/* TOGGLE: SEM NCM */}
-        <div className="flex flex-col">
-          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-            &nbsp;
-          </label>
+        <FilterSelect
+          label="Status da revisão"
+          value={currentStatus}
+          onChange={(value) => setParam("status", value)}
+          options={status}
+          placeholder="Todos os status"
+          className="xl:col-span-2"
+        />
+
+        <div className="flex min-w-0 items-end xl:col-span-2">
           <button
+            type="button"
             onClick={toggleSemNcm}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all whitespace-nowrap ${
+            aria-pressed={semNcm}
+            className={`min-h-10 w-full rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
               semNcm
-                ? "bg-amber-100 text-amber-700 border-amber-300 shadow-sm"
-                : "bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300 hover:bg-slate-100"
+                ? "border-amber-300 bg-amber-50 text-amber-800"
+                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
             }`}
           >
-            {semNcm ? "✓ Sem NCM" : "Sem NCM"}
+            <span aria-hidden="true" className="mr-1.5">
+              {semNcm ? "✓" : "○"}
+            </span>
+            Sem NCM
           </button>
         </div>
-
-        {/* LIMPAR TUDO */}
-        {hasFilters && (
-          <div className="flex flex-col">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-              &nbsp;
-            </label>
-            <button
-              onClick={clearAll}
-              className="px-4 py-2 rounded-lg text-sm font-semibold text-red-500 bg-red-50 border border-red-200 hover:bg-red-100 hover:border-red-300 transition-all whitespace-nowrap"
-            >
-              Limpar
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* CHIPS DE FILTROS ATIVOS */}
       {hasFilters && (
-        <div className="px-3 pb-3 pt-0 flex flex-wrap items-center gap-2">
-          {activeFilters.map((f) => (
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-3 py-2.5">
+          <span
+            aria-live="polite"
+            className="mr-1 text-xs font-semibold text-slate-500"
+          >
+            {activeFilters.length} {activeFilters.length === 1 ? "filtro ativo" : "filtros ativos"}:
+          </span>
+          {activeFilters.map((filter) => (
             <button
-              key={f.key}
-              onClick={() => setParam(f.key, null)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-colors"
+              key={filter.key}
+              type="button"
+              onClick={() => setParam(filter.key, null)}
+              aria-label={`Remover filtro: ${filter.label}`}
+              title="Remover este filtro"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800 transition-colors hover:border-blue-300 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
-              {f.label}
+              <span className="truncate">{filter.label}</span>
               <svg
-                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+                className="shrink-0"
                 width="12"
                 height="12"
                 viewBox="0 0 24 24"
@@ -264,9 +338,13 @@ export default function CatalogFilters({
               </svg>
             </button>
           ))}
-          <span className="text-[10px] font-bold text-slate-400 ml-1">
-            {activeFilters.length} filtro(s)
-          </span>
+          <button
+            type="button"
+            onClick={clearAll}
+            className="ml-auto rounded-md px-2 py-1 text-xs font-semibold text-slate-600 underline decoration-slate-300 underline-offset-2 transition-colors hover:bg-slate-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            Limpar filtros
+          </button>
         </div>
       )}
     </div>
