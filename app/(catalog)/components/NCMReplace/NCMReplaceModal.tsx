@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { formatNcm, maskNcm, isPartialNcm } from "@/lib/ncm";
 
 type FeedbackType = "success" | "error";
 
@@ -33,6 +34,15 @@ export default function NCMReplaceModal({
         "error",
         "Campos Incompletos",
         "Preencha o NCM atual e o novo NCM antes de substituir.",
+      );
+      return;
+    }
+
+    if (isPartialNcm(oldNcm) || isPartialNcm(newNcm)) {
+      showFeedback(
+        "error",
+        "NCM Incompleto",
+        "Ambos os NCMs devem ter exatamente 8 dígitos (padrão XXXX.XX.XX).",
       );
       return;
     }
@@ -134,10 +144,11 @@ export default function NCMReplaceModal({
                 NCM Atual (a ser substituído)
               </label>
               <input
-                className="w-full p-2 mt-1 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-all"
+                className="w-full p-2 mt-1 border border-slate-200 rounded-lg font-mono text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-all"
                 value={oldNcm}
-                onChange={(e) => setOldNcm(e.target.value)}
-                placeholder="Ex: 23091000"
+                maxLength={10}
+                onChange={(e) => setOldNcm(maskNcm(e.target.value))}
+                placeholder="Ex: 2309.10.00"
               />
             </div>
 
@@ -146,10 +157,11 @@ export default function NCMReplaceModal({
                 Novo NCM
               </label>
               <input
-                className="w-full p-2 mt-1 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-all"
+                className="w-full p-2 mt-1 border border-slate-200 rounded-lg font-mono text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-all"
                 value={newNcm}
-                onChange={(e) => setNewNcm(e.target.value)}
-                placeholder="Ex: 23099010"
+                maxLength={10}
+                onChange={(e) => setNewNcm(maskNcm(e.target.value))}
+                placeholder="Ex: 2309.90.10"
               />
             </div>
           </div>
@@ -165,8 +177,9 @@ export default function NCMReplaceModal({
             </button>
             <button
               onClick={handleReplace}
-              disabled={loading}
-              className="flex-1 px-4 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              disabled={loading || isPartialNcm(oldNcm) || isPartialNcm(newNcm) || !oldNcm.trim() || !newNcm.trim()}
+              className="flex-1 px-4 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              title={isPartialNcm(oldNcm) || isPartialNcm(newNcm) ? "Complete os 8 dígitos dos NCMs" : undefined}
             >
               {loading ? (
                 <>

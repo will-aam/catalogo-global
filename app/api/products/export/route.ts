@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { StatusAuditoria } from "@prisma/client";
 import * as XLSX from "xlsx";
+import { formatNcm, cleanNcm } from "@/lib/ncm";
 
 export async function GET(request: Request) {
   try {
@@ -12,9 +13,11 @@ export async function GET(request: Request) {
     const marcaFiltro = searchParams.get("marcaFiltro");
     const subcategoriaFiltro = searchParams.get("subcategoriaFiltro");
     const semNcm = searchParams.get("semNcm") === "true";
+    const ncmIncorreto = searchParams.get("ncmIncorreto") === "true";
     const termoBusca = searchParams.get("termoBusca");
     const statusFiltro = searchParams.get("statusFiltro");
     const format = searchParams.get("format") || "csv"; // csv ou xlsx
+    const ncmFormat = searchParams.get("ncmFormat") || "pontos"; // pontos ou sem_pontos (ERP)
 
     let whereClause: Prisma.ProdutoGlobalWhereInput = {};
     const conditions: Prisma.ProdutoGlobalWhereInput[] = [];
@@ -27,10 +30,19 @@ export async function GET(request: Request) {
     }
 
     if (marcaFiltro) conditions.push({ marca: marcaFiltro });
-    if (subcategoriaFiltro && categoriaFiltro) {
+    if (subcategoriaFiltro) {
       conditions.push({ subcategoria: subcategoriaFiltro });
     }
     if (semNcm) conditions.push({ OR: [{ ncm: null }, { ncm: "" }] });
+
+    if (ncmIncorreto) {
+      const invalidIdsResult = await prisma.$queryRaw<Array<{ id: number }>>`
+        SELECT id FROM "produtos_globais"
+        WHERE "ncm" IS NOT NULL AND "ncm" != '' AND "ncm" !~ '^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}$'
+      `;
+      const invalidIds = invalidIdsResult.map((r) => r.id);
+      conditions.push({ id: { in: invalidIds.length > 0 ? invalidIds : [-1] } });
+    }
 
     if (termoBusca) {
       conditions.push({
@@ -55,31 +67,46 @@ export async function GET(request: Request) {
       orderBy: { id: "asc" },
     });
 
-    // Mapeamento limpo para o arquivo
-    const data = produtos.map((p) => ({
-      ID: p.id,
-      "Código de Barras": p.codigo_barras || "",
-      Descrição: p.descricao || "",
-      NCM: p.ncm || "",
-      Marca: p.marca || "",
-      Categoria: p.categoria || "Sem Categoria",
-      Status: p.status_auditoria,
-    }));
+    // Mapeamento com opção de NCM com pontos (padrão) ou sem pontos (para sistemas ERP)
+    const data = produtos.map((p) => {
+      let ncmFormatado = "";
+      if (p.ncm) {
+        ncmFormatado = ncmFormat === "sem_pontos"
+          ? (cleanNcm(p.ncm) || "")
+          : (formatNcm(p.ncm) || "");
+      }
+
+      return {
+        ID: p.id,
+        "Código de Barras": p.codigo_barras || "",
+        Descrição: p.descricao || "",
+        NCM: ncmFormatado,
+        Marca: p.marca || "",
+        Categoria: p.categoria || "Sem Categoria",
+        Status: p.status_auditoria,
+      };
+    });
+
+    const fileSuffix = ncmFormat === "sem_pontos" ? "_erp" : "";
 
     // ---- EXPORTAÇÃO EM EXCEL (.XLSX) ----
     if (format === "xlsx") {
       const worksheet = XLSX.utils.json_to_sheet(data);
 
-      // TRAVA DE SEGURANÇA EXCEL: Percorre a coluna B (Código de Barras)
-      // e força o tipo 's' (String/Texto) em cada célula para evitar o formato científico
+      // Trava de segurança Excel: força tipo String em Código de Barras (coluna B / c: 1)
+      // e em NCM (coluna D / c: 3) para preservar zeros à esquerda
       if (worksheet["!ref"]) {
         const range = XLSX.utils.decode_range(worksheet["!ref"]);
         for (let r = range.s.r + 1; r <= range.e.r; ++r) {
-          const cellAddress = XLSX.utils.encode_cell({ r, c: 1 }); // c: 1 representa a segunda coluna (Código de Barras)
-          const cell = worksheet[cellAddress];
-          if (cell && cell.v !== undefined) {
-            cell.t = "s";
-            cell.v = String(cell.v);
+          const cellBarcode = worksheet[XLSX.utils.encode_cell({ r, c: 1 })];
+          if (cellBarcode && cellBarcode.v !== undefined) {
+            cellBarcode.t = "s";
+            cellBarcode.v = String(cellBarcode.v);
+          }
+          const cellNcm = worksheet[XLSX.utils.encode_cell({ r, c: 3 })];
+          if (cellNcm && cellNcm.v !== undefined) {
+            cellNcm.t = "s";
+            cellNcm.v = String(cellNcm.v);
           }
         }
       }
@@ -96,7 +123,7 @@ export async function GET(request: Request) {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="catalogo_produtos.xlsx"`,
+          "Content-Disposition": `attachment; filename="catalogo_produtos${fileSuffix}.xlsx"`,
         },
       });
     }
@@ -115,9 +142,9 @@ export async function GET(request: Request) {
 
       const rows = data.map((item) => [
         item.ID,
-        `="${item["Código de Barras"]}"`, // TRUQUE DO EXCEL: Salvar como ="VALOR" impede a quebra do código de barras
+        item["Código de Barras"] ? `="${item["Código de Barras"]}"` : '""',
         `"${item.Descrição.replace(/"/g, '""')}"`,
-        `"${item.NCM}"`,
+        item.NCM ? `="${item.NCM}"` : '""',
         `"${item.Marca.replace(/"/g, '""')}"`,
         `"${item.Categoria.replace(/"/g, '""')}"`,
         `"${item.Status}"`,
@@ -129,7 +156,6 @@ export async function GET(request: Request) {
         ...rows.map((r) => r.join(";")),
       ].join("\n");
 
-      // O caractere BOM (\uFEFF) força o Excel a abrir o CSV direto em UTF-8 mantendo os acentos perfeitamente
       const bom = Buffer.from("\uFEFF", "utf-8");
       const csvBuffer = Buffer.concat([bom, Buffer.from(csvContent, "utf-8")]);
 
@@ -137,7 +163,7 @@ export async function GET(request: Request) {
         status: 200,
         headers: {
           "Content-Type": "text/csv; charset=utf-8",
-          "Content-Disposition": `attachment; filename="catalogo_produtos.csv"`,
+          "Content-Disposition": `attachment; filename="catalogo_produtos${fileSuffix}.csv"`,
         },
       });
     }

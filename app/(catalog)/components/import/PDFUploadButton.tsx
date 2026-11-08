@@ -1,5 +1,6 @@
 "use client";
 
+import { maskNcm } from "@/lib/ncm";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
@@ -226,7 +227,8 @@ export default function PDFUploadButton() {
                 <input
                   type="text"
                   value={bulkNcm}
-                  onChange={(e) => setBulkNcm(e.target.value)}
+                  maxLength={10}
+                  onChange={(e) => setBulkNcm(maskNcm(e.target.value))}
                   className="px-3 py-1.5 border border-slate-300 rounded text-sm outline-none focus:border-blue-500"
                   placeholder="Ex: 19011090"
                 />
@@ -276,9 +278,10 @@ export default function PDFUploadButton() {
                         <input
                           type="text"
                           value={prod.ncm}
+                          maxLength={10}
                           onChange={(e) => {
                             const novaLista = [...produtosTriagem];
-                            novaLista[index].ncm = e.target.value;
+                            novaLista[index].ncm = maskNcm(e.target.value);
                             setProdutosTriagem(novaLista);
                           }}
                           className="w-full px-2 py-1 border border-slate-200 rounded text-xs outline-none focus:border-blue-400"

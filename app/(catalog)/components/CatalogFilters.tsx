@@ -80,9 +80,8 @@ export default function CatalogFilters({
   const currentMarca = searchParams.get("marca") || "";
   const currentSubcategoria = searchParams.get("subcategoria") || "";
   const semNcm = searchParams.get("semNcm") === "true";
+  const ncmIncorreto = searchParams.get("ncmIncorreto") === "true";
   const currentStatus = searchParams.get("status") || "";
-
-  const hasCategoria = !!currentCategoria;
 
   const setParam = (key: string, value: string | null) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -113,7 +112,27 @@ export default function CatalogFilters({
   };
 
   const toggleSemNcm = () => {
-    setParam("semNcm", semNcm ? null : "true");
+    const params = new URLSearchParams(searchParams.toString());
+    if (semNcm) {
+      params.delete("semNcm");
+    } else {
+      params.set("semNcm", "true");
+      params.delete("ncmIncorreto");
+    }
+    params.set("page", "1");
+    router.push(`/?${params.toString()}`);
+  };
+
+  const toggleNcmIncorreto = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (ncmIncorreto) {
+      params.delete("ncmIncorreto");
+    } else {
+      params.set("ncmIncorreto", "true");
+      params.delete("semNcm");
+    }
+    params.set("page", "1");
+    router.push(`/?${params.toString()}`);
   };
 
   const clearAll = () => {
@@ -145,7 +164,7 @@ export default function CatalogFilters({
     });
   }
 
-  if (currentSubcategoria && hasCategoria) {
+  if (currentSubcategoria) {
     const found = subcategorias.find((s) => s.value === currentSubcategoria);
     activeFilters.push({
       key: "subcategoria",
@@ -154,6 +173,11 @@ export default function CatalogFilters({
   }
 
   if (semNcm) activeFilters.push({ key: "semNcm", label: "Sem NCM" });
+  if (ncmIncorreto)
+    activeFilters.push({
+      key: "ncmIncorreto",
+      label: "NCM incorreto (< 8 dígitos)",
+    });
 
   if (currentStatus) {
     const found = status.find((option) => option.value === currentStatus);
@@ -262,7 +286,6 @@ export default function CatalogFilters({
           onChange={(v) => setParam("subcategoria", v)}
           options={subcategorias}
           placeholder="Todas as Subcategorias"
-          disabled={!hasCategoria}
           className="xl:col-span-2"
         />
 
@@ -284,21 +307,39 @@ export default function CatalogFilters({
           className="xl:col-span-2"
         />
 
-        <div className="flex min-w-0 items-end xl:col-span-2">
+        <div className="flex min-w-0 items-end gap-1.5 xl:col-span-2">
           <button
             type="button"
             onClick={toggleSemNcm}
             aria-pressed={semNcm}
-            className={`min-h-10 w-full rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+            title="Filtrar produtos sem código NCM cadastrado"
+            className={`min-h-10 flex-1 rounded-lg border px-2 py-2 text-xs font-semibold transition-colors ${
               semNcm
                 ? "border-amber-300 bg-amber-50 text-amber-800"
                 : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
             }`}
           >
-            <span aria-hidden="true" className="mr-1.5">
+            <span aria-hidden="true" className="mr-1">
               {semNcm ? "✓" : "○"}
             </span>
             Sem NCM
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleNcmIncorreto}
+            aria-pressed={ncmIncorreto}
+            title="Filtrar produtos com NCM incompleto ou incorreto (formato divergente de 8 dígitos)"
+            className={`min-h-10 flex-1 rounded-lg border px-2 py-2 text-xs font-semibold transition-colors ${
+              ncmIncorreto
+                ? "border-red-300 bg-red-50 text-red-800"
+                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            <span aria-hidden="true" className="mr-1">
+              {ncmIncorreto ? "" : "○"}
+            </span>
+            Incorretos
           </button>
         </div>
       </div>
@@ -309,7 +350,8 @@ export default function CatalogFilters({
             aria-live="polite"
             className="mr-1 text-xs font-semibold text-slate-500"
           >
-            {activeFilters.length} {activeFilters.length === 1 ? "filtro ativo" : "filtros ativos"}:
+            {activeFilters.length}{" "}
+            {activeFilters.length === 1 ? "filtro ativo" : "filtros ativos"}:
           </span>
           {activeFilters.map((filter) => (
             <button

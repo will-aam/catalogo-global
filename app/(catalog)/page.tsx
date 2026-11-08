@@ -17,6 +17,7 @@ export default async function CatalogoPage({
     marca?: string;
     subcategoria?: string;
     semNcm?: string;
+    ncmIncorreto?: string;
     status?: string;
   }>;
 }) {
@@ -25,6 +26,7 @@ export default async function CatalogoPage({
   const marcaFiltro = resolvedParams.marca;
   const subcategoriaFiltro = resolvedParams.subcategoria;
   const semNcm = resolvedParams.semNcm;
+  const ncmIncorreto = resolvedParams.ncmIncorreto;
   const statusFiltro = Object.values(StatusAuditoria).includes(
     resolvedParams.status as StatusAuditoria,
   )
@@ -47,12 +49,22 @@ export default async function CatalogoPage({
     conditions.push({ marca: marcaFiltro });
   }
 
-  if (subcategoriaFiltro && categoriaFiltro) {
+  if (subcategoriaFiltro) {
     conditions.push({ subcategoria: subcategoriaFiltro });
   }
 
   if (semNcm === "true") {
     conditions.push({ OR: [{ ncm: null }, { ncm: "" }] });
+  }
+
+  if (ncmIncorreto === "true") {
+    const invalidIdsResult = await prisma.$queryRaw<Array<{ id: number }>>`
+      SELECT id FROM "produtos_globais"
+      WHERE "ncm" IS NOT NULL AND "ncm" != '' AND "ncm" !~ '^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}$'
+      LIMIT 10000
+    `;
+    const invalidIds = invalidIdsResult.map((r) => r.id);
+    conditions.push({ id: { in: invalidIds.length > 0 ? invalidIds : [-1] } });
   }
 
   if (termoBusca) {
@@ -98,14 +110,12 @@ export default async function CatalogoPage({
     subcategoriaFilterConditions.push({ categoria: categoriaFiltro });
   }
 
-  const subcategoriasQuery: Promise<SubcategoriaGroup[]> = hasCategoriaSelected
-    ? (prisma.produtoGlobal.groupBy({
-        by: ["subcategoria"],
-        where: { AND: subcategoriaFilterConditions },
-        _count: { id: true },
-        orderBy: { subcategoria: "asc" },
-      }) as unknown as Promise<SubcategoriaGroup[]>)
-    : Promise.resolve([] as SubcategoriaGroup[]);
+  const subcategoriasQuery: Promise<SubcategoriaGroup[]> = prisma.produtoGlobal.groupBy({
+    by: ["subcategoria"],
+    where: { AND: subcategoriaFilterConditions },
+    _count: { id: true },
+    orderBy: { subcategoria: "asc" },
+  }) as unknown as Promise<SubcategoriaGroup[]>;
 
   const [
     categoriasResumo,
@@ -208,6 +218,7 @@ export default async function CatalogoPage({
           marcaFiltro={marcaFiltro}
           subcategoriaFiltro={subcategoriaFiltro}
           semNcm={semNcm === "true"}
+          ncmIncorreto={ncmIncorreto === "true"}
           termoBusca={termoBusca}
           currentSort={sortParam}
           statusFiltro={statusFiltro}

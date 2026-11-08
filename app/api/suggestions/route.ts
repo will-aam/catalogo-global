@@ -101,16 +101,20 @@ function readGroqRateLimit(headers: Headers): GroqRateLimit {
   };
 }
 
-async function buscarNaWeb(query: string): Promise<WebSource[]> {
+async function buscarNaWeb(
+  query: string,
+  options?: { include_domains?: string[]; max_results?: number },
+): Promise<WebSource[]> {
   const response = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       api_key: process.env.TAVILY_API_KEY,
       query: query.slice(0, 390),
-      search_depth: "fast",
+      search_depth: "basic",
       topic: "general",
-      max_results: 3,
+      max_results: options?.max_results ?? 3,
+      include_domains: options?.include_domains,
       include_answer: false,
       include_raw_content: false,
       include_usage: true,
@@ -131,30 +135,81 @@ async function buscarNaWeb(query: string): Promise<WebSource[]> {
 
   return result.results.map((item) => ({
     ...item,
-    content: item.content.slice(0, 700),
+    content: item.content.slice(0, 800),
   }));
 }
 
-async function buscarNcmOficial(termo: string): Promise<NcmCandidate[]> {
-  const normalized = termo.trim().slice(0, 100);
-  if (normalized.length < 2) return [];
+async function obterFontesWeb(codigoBarras: string, descricao: string): Promise<WebSource[]> {
+  const cleanBarcode = (codigoBarras || "").replace(/\D/g, "");
 
-  const terms = [...new Set(
+  // 1. Prioridade máxima: Bases de dados oficiais de GTIN/NCM no Brasil (Cosmos Bluesoft, Wireshape)
+  if (cleanBarcode.length >= 7) {
+    try {
+      const fontesGtin = await buscarNaWeb(cleanBarcode, {
+        include_domains: ["cosmos.bluesoft.com.br", "data.wireshape.com"],
+        max_results: 3,
+      });
+
+      if (fontesGtin.length > 0) {
+        return fontesGtin;
+      }
+    } catch (err) {
+      console.warn("Aviso: Falha ao consultar bases de GTIN especializadas:", err);
+    }
+  }
+
+  // 2. Busca geral limpa com código de barras ou descrição
+  const queryWeb = [
+    cleanBarcode ? `"${cleanBarcode}"` : "",
+    descricao.trim(),
+  ].filter(Boolean).join(" ");
+
+  try {
+    return await buscarNaWeb(queryWeb, { max_results: 3 });
+  } catch (err) {
+    console.warn("Aviso: Falha na busca geral da web:", err);
+    return [];
+  }
+}
+
+async function buscarNcmOficial(
+  termo: string,
+  extraCodes: string[] = [],
+): Promise<NcmCandidate[]> {
+  const normalized = termo.trim().slice(0, 100);
+
+  const terms = normalized.length >= 2 ? [...new Set(
     normalized
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .split(/[^\p{L}\p{N}]+/u)
       .filter((part) => part.length >= 4),
-  )].slice(0, 5);
+  )].slice(0, 5) : [];
   const digits = normalized.replace(/\D/g, "");
   const formattedCode =
     digits.length === 8
       ? `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6)}`
       : "";
+
+  const extraCodesFormatted = extraCodes.flatMap((code) => {
+    const d = code.replace(/\D/g, "");
+    if (!d) return [];
+    return [
+      code,
+      d,
+      d.length === 8 ? `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6)}` : "",
+    ].filter(Boolean);
+  });
+
   return prisma.nCM.findMany({
     where: {
       OR: [
-        { descricao: { contains: normalized, mode: "insensitive" } },
+        ...(extraCodesFormatted.length > 0
+          ? [{ codigo: { in: extraCodesFormatted } }]
+          : []),
+        ...(normalized.length >= 2
+          ? [{ descricao: { contains: normalized, mode: "insensitive" as const } }]
+          : []),
         ...terms.map((part) => ({ descricao: { contains: part, mode: "insensitive" as const } })),
         ...(digits.length >= 2
           ? [
@@ -165,7 +220,7 @@ async function buscarNcmOficial(termo: string): Promise<NcmCandidate[]> {
       ],
     },
     select: { codigo: true, descricao: true },
-    take: 10,
+    take: 12,
     orderBy: { codigo: "asc" },
   });
 }
@@ -291,12 +346,19 @@ export async function POST(request: Request) {
   }
 
   try {
-    const queryWeb = [
-      codigoBarras ? `"${codigoBarras}"` : "",
-      descricao.trim(),
-      "produto marca fabricante Brasil",
-    ].filter(Boolean).join(" ");
-    const [categoriasResumo, subcategoriasResumo, marcasResumo, ncmAtualOficial, candidatosEncontrados, fontesWeb, historicoRecente] = await Promise.all([
+    const fontesWeb = await obterFontesWeb(codigoBarras, descricao);
+    const ncmsFromWeb: string[] = [];
+    for (const source of fontesWeb) {
+      const dotted = source.content.match(/\b\d{4}\.\d{2}\.\d{2}\b/g) || [];
+      const labeled = source.content.match(/NCM:?\s*(\d{8})/gi) || [];
+      for (const m of dotted) ncmsFromWeb.push(m);
+      for (const m of labeled) {
+        const d = m.replace(/\D/g, "");
+        if (d.length === 8) ncmsFromWeb.push(d);
+      }
+    }
+
+    const [categoriasResumo, subcategoriasResumo, marcasResumo, ncmAtualOficial, candidatosEncontrados, historicoRecente] = await Promise.all([
       prisma.produtoGlobal.groupBy({
         by: ["categoria"],
         where: { NOT: [{ categoria: null }, { categoria: "" }] },
@@ -334,8 +396,7 @@ export async function POST(request: Request) {
             });
           })()
         : Promise.resolve(null),
-      buscarNcmOficial(descricao.trim()),
-      buscarNaWeb(queryWeb),
+      buscarNcmOficial(descricao.trim(), ncmsFromWeb),
       prisma.historicoClassificacao.findMany({
         where: {
           OR: [
@@ -484,7 +545,7 @@ export async function POST(request: Request) {
         messages: [
           {
             role: "system",
-            content: "Você faz auditoria conservadora de produtos brasileiros usando as evidências fornecidas. Nunca infira marca ou classificação fiscal sem evidência suficiente. Para dúvida, escolha sem_sugestao. O NCM deve ser exatamente um dos candidatos oficiais do Prisma. Responda em português.",
+            content: "Você faz auditoria conservadora de produtos brasileiros usando as evidências fornecidas. Priorize fontes oficiais de GTIN/EAN (como Cosmos Bluesoft e Wireshape) correspondentes ao código de barras exato. Preste atenção essencial a variações críticas do produto: produtos sem glúten (S/GLUTEN) NÃO são sem álcool; bebidas com teor alcoólico regular usam 2203.00.00 (Cervejas de malte), enquanto 2202.91.00 é restrito a cervejas expressamente sem álcool (0,0% ou teor alcoólico ≤ 0,5% ABV). Nunca infira marca ou classificação fiscal sem evidência suficiente. Para dúvida, escolha sem_sugestao. O NCM deve ser exatamente um dos candidatos oficiais do Prisma. Responda em português.",
           },
           { role: "user", content: prompt },
         ],

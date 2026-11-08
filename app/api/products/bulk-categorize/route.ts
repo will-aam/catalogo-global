@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OrigemClassificacao, Prisma, StatusAuditoria } from "@prisma/client";
 import { buildClassificationHistoryRecord } from "@/lib/classification-history";
+import { formatNcm } from "@/lib/ncm";
 
 export async function POST(request: Request) {
   try {
     const { ids, categoria, marca, subcategoria, ncm, selectAllFilters } =
       await request.json();
 
-    // 2. Adicionamos o '!ncm' na validação
     if (!categoria && !marca && !subcategoria && !ncm) {
       return NextResponse.json(
         { error: "Nenhum dado para atualizar" },
@@ -27,6 +27,7 @@ export async function POST(request: Request) {
         marcaFiltro,
         subcategoriaFiltro,
         semNcm,
+        ncmIncorreto,
         excludeIds,
       } = selectAllFilters;
 
@@ -37,10 +38,19 @@ export async function POST(request: Request) {
       }
 
       if (marcaFiltro) conditions.push({ marca: marcaFiltro });
-      if (subcategoriaFiltro && categoriaFiltro) {
+      if (subcategoriaFiltro) {
         conditions.push({ subcategoria: subcategoriaFiltro });
       }
       if (semNcm) conditions.push({ OR: [{ ncm: null }, { ncm: "" }] });
+
+      if (ncmIncorreto) {
+        const invalidIdsResult = await prisma.$queryRaw<Array<{ id: number }>>`
+          SELECT id FROM "produtos_globais"
+          WHERE "ncm" IS NOT NULL AND "ncm" != '' AND "ncm" !~ '^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}$'
+        `;
+        const invalidIds = invalidIdsResult.map((r) => r.id);
+        conditions.push({ id: { in: invalidIds.length > 0 ? invalidIds : [-1] } });
+      }
 
       if (termoBusca) {
         conditions.push({
@@ -74,37 +84,55 @@ export async function POST(request: Request) {
     if (marca) dataToUpdate.marca = marca.trim();
     if (subcategoria) dataToUpdate.subcategoria = subcategoria.trim();
     if (ncm) {
-      dataToUpdate.ncm = ncm.replace(/\D/g, "");
+      dataToUpdate.ncm = formatNcm(ncm);
     }
 
-    const resultado = await prisma.$transaction(async (tx) => {
-      const before = await tx.produtoGlobal.findMany({ where: whereClause });
-      const updated = await tx.produtoGlobal.updateMany({
-        where: whereClause,
-        data: dataToUpdate,
-      });
-      const history = before.flatMap((product) => {
-        const after = {
-          ...product,
-          categoria: categoria ? categoria.trim() : product.categoria,
-          subcategoria: subcategoria ? subcategoria.trim() : product.subcategoria,
-          marca: marca ? marca.trim() : product.marca,
-          ncm: ncm ? ncm.replace(/\D/g, "") : product.ncm,
-        };
-        const record = buildClassificationHistoryRecord(
-          product,
-          after,
-          OrigemClassificacao.LOTE,
-        );
-        return record ? [record] : [];
-      });
-      for (let offset = 0; offset < history.length; offset += 500) {
-        await tx.historicoClassificacao.createMany({
-          data: history.slice(offset, offset + 500),
+    const resultado = await prisma.$transaction(
+      async (tx) => {
+        const before = await tx.produtoGlobal.findMany({
+          where: whereClause,
+          select: {
+            id: true,
+            codigo_barras: true,
+            descricao: true,
+            categoria: true,
+            subcategoria: true,
+            marca: true,
+            ncm: true,
+          },
         });
-      }
-      return updated;
-    });
+        const updated = await tx.produtoGlobal.updateMany({
+          where: whereClause,
+          data: dataToUpdate,
+        });
+        const history = before.flatMap((product) => {
+          const after = {
+            ...product,
+            categoria: categoria ? categoria.trim() : product.categoria,
+            subcategoria: subcategoria ? subcategoria.trim() : product.subcategoria,
+            marca: marca ? marca.trim() : product.marca,
+            ncm: ncm ? formatNcm(ncm) : product.ncm,
+          };
+          const record = buildClassificationHistoryRecord(
+            product,
+            after,
+            OrigemClassificacao.LOTE,
+          );
+          return record ? [record] : [];
+        });
+        for (let offset = 0; offset < history.length; offset += 2000) {
+          await tx.historicoClassificacao.createMany({
+            data: history.slice(offset, offset + 2000),
+            skipDuplicates: true,
+          });
+        }
+        return updated;
+      },
+      {
+        maxWait: 30000,
+        timeout: 180000,
+      },
+    );
 
     return NextResponse.json({ success: true, count: resultado.count });
   } catch (error) {

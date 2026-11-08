@@ -36,16 +36,20 @@ export function buildClassificationHistoryRecord(
 ) {
   const confirmouNcm =
     !sameNcm(before.ncm, after.ncm) ||
-    (origem === "IA" && Boolean(clean(sugestoes.ncm)) && sameNcm(sugestoes.ncm, after.ncm));
+    (origem === "IA" && Boolean(clean(sugestoes.ncm)) && sameNcm(sugestoes.ncm, after.ncm)) ||
+    (includeWithoutConfirmedChanges && Boolean(clean(after.ncm)));
   const confirmouCategoria =
     !sameValue(before.categoria, after.categoria) ||
-    (origem === "IA" && Boolean(clean(sugestoes.categoria)) && sameValue(sugestoes.categoria, after.categoria));
+    (origem === "IA" && Boolean(clean(sugestoes.categoria)) && sameValue(sugestoes.categoria, after.categoria)) ||
+    (includeWithoutConfirmedChanges && Boolean(clean(after.categoria)));
   const confirmouSubcategoria =
     !sameValue(before.subcategoria, after.subcategoria) ||
-    (origem === "IA" && Boolean(clean(sugestoes.subcategoria)) && sameValue(sugestoes.subcategoria, after.subcategoria));
+    (origem === "IA" && Boolean(clean(sugestoes.subcategoria)) && sameValue(sugestoes.subcategoria, after.subcategoria)) ||
+    (includeWithoutConfirmedChanges && Boolean(clean(after.subcategoria)));
   const confirmouMarca =
     !sameValue(before.marca, after.marca) ||
-    (origem === "IA" && Boolean(clean(sugestoes.marca)) && sameValue(sugestoes.marca, after.marca));
+    (origem === "IA" && Boolean(clean(sugestoes.marca)) && sameValue(sugestoes.marca, after.marca)) ||
+    (includeWithoutConfirmedChanges && Boolean(clean(after.marca)));
 
   if (
     !confirmouNcm &&

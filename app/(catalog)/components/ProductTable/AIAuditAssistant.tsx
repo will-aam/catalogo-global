@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import { maskNcm, isPartialNcm } from "@/lib/ncm";
 
 type AuditProduct = {
   id: number;
@@ -25,16 +26,41 @@ type Classification = {
   marca: string | null;
   marcaAcao: "preencher" | "manter" | "corrigir" | "sem_sugestao";
   ncmSugerido: NcmOption | null;
-  ncmStatus: "preencher" | "manter" | "corrigir" | "confirmado" | "sem_sugestao";
+  ncmStatus:
+    | "preencher"
+    | "manter"
+    | "corrigir"
+    | "confirmado"
+    | "sem_sugestao";
   alternativasNcm: NcmOption[];
   evidenciaWeb: string;
   justificativa: string;
   fontesWeb: { title: string; url: string; score: number }[];
   padroesHistorico: {
-    ncm: { codigo: string | null; categoria: string | null; subcategoria: string | null; ocorrencias: number; similaridade: number }[];
-    categorias: { categoria: string | null; subcategoria: string | null; ocorrencias: number; similaridade: number }[];
-    subcategorias: { categoria: string | null; subcategoria: string | null; ocorrencias: number; similaridade: number }[];
-    marcas: { marca: string | null; ocorrencias: number; similaridade: number }[];
+    ncm: {
+      codigo: string | null;
+      categoria: string | null;
+      subcategoria: string | null;
+      ocorrencias: number;
+      similaridade: number;
+    }[];
+    categorias: {
+      categoria: string | null;
+      subcategoria: string | null;
+      ocorrencias: number;
+      similaridade: number;
+    }[];
+    subcategorias: {
+      categoria: string | null;
+      subcategoria: string | null;
+      ocorrencias: number;
+      similaridade: number;
+    }[];
+    marcas: {
+      marca: string | null;
+      ocorrencias: number;
+      similaridade: number;
+    }[];
   };
   usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
   rateLimit?: {
@@ -58,7 +84,11 @@ function formatWait(ms: number) {
 }
 
 function sameLabel(left: string, right: string) {
-  return left.trim().localeCompare(right.trim(), "pt-BR", { sensitivity: "base" }) === 0;
+  return (
+    left
+      .trim()
+      .localeCompare(right.trim(), "pt-BR", { sensitivity: "base" }) === 0
+  );
 }
 
 const actionLabels: Record<string, string> = {
@@ -114,7 +144,10 @@ export default function AIAuditAssistant({
       const parsed = JSON.parse(saved) as { until?: number; message?: string };
       if (parsed.until && parsed.until > Date.now()) {
         setQuotaWaitUntil(parsed.until);
-        setQuotaWaitMessage(parsed.message || "Aguardando a renovação do limite de tokens da Groq.");
+        setQuotaWaitMessage(
+          parsed.message ||
+            "Aguardando a renovação do limite de tokens da Groq.",
+        );
       } else {
         localStorage.removeItem(quotaStorageKey);
       }
@@ -130,7 +163,9 @@ export default function AIAuditAssistant({
       setClockNow(now);
       if (now >= quotaWaitUntil) {
         setQuotaWaitUntil(null);
-        setQuotaWaitMessage("A janela de tokens foi renovada. Você pode gerar a próxima sugestão.");
+        setQuotaWaitMessage(
+          "A janela de tokens foi renovada. Você pode gerar a próxima sugestão.",
+        );
         localStorage.removeItem(quotaStorageKey);
       }
     }, 1000);
@@ -155,7 +190,7 @@ export default function AIAuditAssistant({
     setCategoria(queue[0]?.categoria || "");
     setSubcategoria(queue[0]?.subcategoria || "");
     setMarca(queue[0]?.marca || "");
-    setNcm(queue[0]?.ncm || "");
+    setNcm(maskNcm(queue[0]?.ncm || ""));
     setError("");
     setDone(false);
     setIsOpen(true);
@@ -164,7 +199,9 @@ export default function AIAuditAssistant({
   const generateSuggestion = async () => {
     if (!product) return;
     if (quotaWaitUntil && quotaWaitUntil > Date.now()) {
-      setQuotaWaitMessage(`Aguarde ${formatWait(quotaWaitUntil - Date.now())}; a contagem vem do limite informado pela Groq.`);
+      setQuotaWaitMessage(
+        `Aguarde ${formatWait(quotaWaitUntil - Date.now())}; a contagem vem do limite informado pela Groq.`,
+      );
       return;
     }
     setLoading(true);
@@ -178,8 +215,15 @@ export default function AIAuditAssistant({
       const data = await response.json();
       if (!response.ok) {
         if (response.status === 429) {
-          const waitMs = data.rateLimit?.retryAfterMs || data.rateLimit?.resetTokensMs || data.rateLimit?.resetRequestsMs || 60_000;
-          startQuotaWait(waitMs + 1000, "A Groq pediu uma pausa por limite de uso. O assistente vai mostrar quando tentar novamente.");
+          const waitMs =
+            data.rateLimit?.retryAfterMs ||
+            data.rateLimit?.resetTokensMs ||
+            data.rateLimit?.resetRequestsMs ||
+            60_000;
+          startQuotaWait(
+            waitMs + 1000,
+            "A Groq pediu uma pausa por limite de uso. O assistente vai mostrar quando tentar novamente.",
+          );
           setError("");
           return;
         }
@@ -187,8 +231,13 @@ export default function AIAuditAssistant({
       }
       const rateLimit = data.rateLimit as Classification["rateLimit"];
       const requestTokens = Number(data.usage?.totalTokens || 0);
-      if (rateLimit?.remainingTokens !== null && rateLimit?.remainingTokens !== undefined &&
-          rateLimit.resetTokensMs && requestTokens > 0 && rateLimit.remainingTokens < requestTokens) {
+      if (
+        rateLimit?.remainingTokens !== null &&
+        rateLimit?.remainingTokens !== undefined &&
+        rateLimit.resetTokensMs &&
+        requestTokens > 0 &&
+        rateLimit.remainingTokens < requestTokens
+      ) {
         startQuotaWait(
           rateLimit.resetTokensMs + 1000,
           `Esta chamada usou ${requestTokens.toLocaleString("pt-BR")} tokens. Restam ${rateLimit.remainingTokens.toLocaleString("pt-BR")} nesta janela; a próxima auditoria pode exceder o limite.`,
@@ -204,7 +253,8 @@ export default function AIAuditAssistant({
           : product.categoria || "",
       );
       setSubcategoria(
-        data.subcategoriaAcao === "preencher" || data.subcategoriaAcao === "corrigir"
+        data.subcategoriaAcao === "preencher" ||
+          data.subcategoriaAcao === "corrigir"
           ? data.subcategoria || product.subcategoria || ""
           : product.subcategoria || "",
       );
@@ -214,13 +264,17 @@ export default function AIAuditAssistant({
           : product.marca || "",
       );
       setNcm(
-        data.ncmStatus === "preencher" || data.ncmStatus === "corrigir"
-          ? data.ncmSugerido?.codigo || product.ncm || ""
-          : product.ncm || "",
+        maskNcm(
+          data.ncmStatus === "preencher" || data.ncmStatus === "corrigir"
+            ? data.ncmSugerido?.codigo || product.ncm || ""
+            : product.ncm || "",
+        ),
       );
     } catch (caught) {
       setError(
-        caught instanceof Error ? caught.message : "Erro ao analisar o produto.",
+        caught instanceof Error
+          ? caught.message
+          : "Erro ao analisar o produto.",
       );
     } finally {
       setLoading(false);
@@ -233,23 +287,18 @@ export default function AIAuditAssistant({
     setCategoria(reviewQueue[index]?.categoria || "");
     setSubcategoria(reviewQueue[index]?.subcategoria || "");
     setMarca(reviewQueue[index]?.marca || "");
-    setNcm(reviewQueue[index]?.ncm || "");
+    setNcm(maskNcm(reviewQueue[index]?.ncm || ""));
     setError("");
   };
 
   const saveAndContinue = async () => {
     if (!product || !suggestion) return;
     const normalizedNcm = ncm.replace(/\D/g, "");
-    const originalNcm = (product.ncm || "").replace(/\D/g, "");
-    const selectedOfficialNcm = suggestion.alternativasNcm.some(
-      (option) => option.codigo.replace(/\D/g, "") === normalizedNcm,
-    );
-    if (normalizedNcm !== originalNcm && !selectedOfficialNcm) {
-      setError("Para alterar o NCM, selecione um código encontrado na tabela oficial.");
-      return;
-    }
-    if (suggestion.ncmStatus === "corrigir" && normalizedNcm === originalNcm) {
-      setError("A IA encontrou uma divergência no NCM. Selecione a correção oficial antes de salvar.");
+
+    if (isPartialNcm(ncm)) {
+      setError(
+        "Código NCM incompleto. É necessário preencher os 8 dígitos (padrão XXXX.XX.XX).",
+      );
       return;
     }
 
@@ -264,29 +313,38 @@ export default function AIAuditAssistant({
           categoria,
           subcategoria,
           marca,
-          ncm: normalizedNcm,
+          ncm: normalizedNcm || null,
           origemClassificacao: "IA",
           sugestoesAuditoria: {
             categoria:
-              suggestion.categoriaAcao === "preencher" || suggestion.categoriaAcao === "corrigir"
+              suggestion.categoriaAcao === "preencher" ||
+              suggestion.categoriaAcao === "corrigir"
                 ? suggestion.categoria
                 : null,
             subcategoria:
-              suggestion.subcategoriaAcao === "preencher" || suggestion.subcategoriaAcao === "corrigir"
+              suggestion.subcategoriaAcao === "preencher" ||
+              suggestion.subcategoriaAcao === "corrigir"
                 ? suggestion.subcategoria
                 : null,
             marca:
-              suggestion.marcaAcao === "preencher" || suggestion.marcaAcao === "corrigir"
+              suggestion.marcaAcao === "preencher" ||
+              suggestion.marcaAcao === "corrigir"
                 ? suggestion.marca
                 : null,
             ncm:
-              suggestion.ncmStatus === "preencher" || suggestion.ncmStatus === "corrigir"
+              suggestion.ncmStatus === "preencher" ||
+              suggestion.ncmStatus === "corrigir"
                 ? suggestion.ncmSugerido?.codigo || null
                 : null,
           },
         }),
       });
-      if (!response.ok) throw new Error("Não foi possível salvar a auditoria.");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(
+          errorData?.error || "Não foi possível salvar a auditoria.",
+        );
+      }
 
       onProductReviewed(product.id);
       router.refresh();
@@ -322,195 +380,512 @@ export default function AIAuditAssistant({
         </button>
       )}
 
-      {isOpen && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto p-2 sm:p-4">
-          <button
-            type="button"
-            aria-label="Fechar auditoria"
-            onClick={() => setIsOpen(false)}
-            className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
-          />
-          <section className="relative flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]">
-            <header className="z-10 flex shrink-0 items-center justify-between border-b bg-white px-4 py-3 sm:px-6 sm:py-4">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">Revisão assistida por IA</h2>
-                <p className="text-xs text-slate-500">
-                  Item {Math.min(currentIndex + 1, reviewQueue.length)} de {reviewQueue.length}. A IA só é consultada quando você pedir.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="rounded-lg px-3 py-1 text-slate-500 hover:bg-slate-100"
-              >
-                Fechar
-              </button>
-            </header>
-
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
-              {loading && (
-                <div className="flex items-center gap-3 rounded-xl bg-violet-50 p-5 text-sm font-medium text-violet-800">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-violet-700" />
-                  Consultando Tavily, Groq e a tabela oficial de NCM…
+      {isOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-10000 flex items-center justify-center overflow-y-auto p-2 sm:p-4">
+            <button
+              type="button"
+              aria-label="Fechar auditoria"
+              onClick={() => setIsOpen(false)}
+              className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
+            />
+            <section className="relative flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]">
+              <header className="z-10 flex shrink-0 items-center justify-between border-b bg-white px-4 py-3 sm:px-6 sm:py-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Revisão assistida por IA
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Item {Math.min(currentIndex + 1, reviewQueue.length)} de{" "}
+                    {reviewQueue.length}. A IA só é consultada quando você
+                    pedir.
+                  </p>
                 </div>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setIsOpen(false)}
+                  className="rounded-lg px-3 py-1 text-slate-500 hover:bg-slate-100"
+                >
+                  Fechar
+                </button>
+              </header>
 
-              {done && (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-sm font-medium text-emerald-800">
-                  Fim da seleção. Os itens pulados foram mantidos sem alteração.
-                </div>
-              )}
-
-              {error && (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                  {error}
-                </div>
-              )}
-
-              {quotaWaitMessage && (
-                <div role="status" aria-live="polite" className={`rounded-xl border p-4 text-sm ${quotaWaitUntil && quotaWaitUntil > clockNow ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
-                  <p className="font-semibold">{quotaWaitUntil && quotaWaitUntil > clockNow ? "Pausa recomendada antes da próxima auditoria" : "Limite atualizado"}</p>
-                  <p className="mt-1">{quotaWaitMessage}</p>
-                  {quotaWaitUntil && quotaWaitUntil > clockNow && (
-                    <p className="mt-2 font-mono text-base font-bold tabular-nums">Tente novamente em {formatWait(quotaWaitUntil - clockNow)}</p>
-                  )}
-                </div>
-              )}
-
-              {product && !done && (
-                <>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Produto no Prisma</p>
-                    <p className="mt-1 font-medium text-slate-900">{product.descricao}</p>
-                    <p className="mt-1 font-mono text-xs text-slate-500">Código de barras: {product.codigo_barras}</p>
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
+                {loading && (
+                  <div className="flex items-center gap-3 rounded-xl bg-violet-50 p-5 text-sm font-medium text-violet-800">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-violet-700" />
+                    Consultando Tavily, Groq e a tabela oficial de NCM…
                   </div>
+                )}
 
-                  {!suggestion && !loading && (
-                    <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-4">
-                      <p className="text-sm text-violet-900">Nenhuma chamada foi feita para este item ainda. Gere a sugestão quando quiser usar sua cota de pesquisa e IA.</p>
-                      <button type="button" onClick={() => void generateSuggestion()} disabled={loading} className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-70">
-                        {quotaWaitUntil && quotaWaitUntil > clockNow ? `Aguardar ${formatWait(quotaWaitUntil - clockNow)}` : "✨ Gerar sugestão para este item"}
-                      </button>
-                    </div>
-                  )}
+                {done && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-sm font-medium text-emerald-800">
+                    Fim da seleção. Os itens pulados foram mantidos sem
+                    alteração.
+                  </div>
+                )}
 
-                  <div className="space-y-4">
-                    <label className="block space-y-1.5">
-                      <span className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
-                        <span>Subcategoria</span>
-                        {suggestion && <span className="flex flex-wrap items-center justify-end gap-1.5">
-                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${!sameLabel(subcategoria, suggestion.subcategoria || "") ? "border-blue-200 bg-blue-50 text-blue-800" : originClasses[suggestion.subcategoriaOrigem]}`}>
-                            {!sameLabel(subcategoria, suggestion.subcategoria || "") ? "Editada por você" : originLabels[suggestion.subcategoriaOrigem]}
-                          </span>
-                          <span className={`text-[11px] font-medium ${suggestion.subcategoriaAcao === "corrigir" ? "text-amber-700" : "text-slate-500"}`}>{actionLabels[suggestion.subcategoriaAcao]}</span>
-                        </span>}
-                      </span>
-                      <input value={subcategoria} onChange={(event) => setSubcategoria(event.target.value)} disabled={!suggestion || loading} placeholder="A IA sugerirá uma subcategoria" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50 disabled:text-slate-600" />
-                    </label>
-                    <label className="block space-y-1.5">
-                      <span className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
-                        <span>Categoria (existente ou nova)</span>
-                        {suggestion && <span className="flex flex-wrap items-center justify-end gap-1.5">
-                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${!sameLabel(categoria, suggestion.categoria) ? "border-blue-200 bg-blue-50 text-blue-800" : originClasses[suggestion.categoriaOrigem]}`}>
-                            {!sameLabel(categoria, suggestion.categoria) ? "Editada por você" : originLabels[suggestion.categoriaOrigem]}
-                          </span>
-                          <span className={`text-[11px] font-medium ${suggestion.categoriaAcao === "corrigir" ? "text-amber-700" : "text-slate-500"}`}>{actionLabels[suggestion.categoriaAcao]}</span>
-                        </span>}
-                      </span>
-                      <input value={categoria} onChange={(event) => setCategoria(event.target.value)} disabled={!suggestion || loading} placeholder="A IA sugerirá uma categoria" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50 disabled:text-slate-600" />
-                    </label>
-                    <label className="block space-y-1.5">
-                      <span className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
-                        <span>Marca</span>
-                        {suggestion && <span className={`text-[11px] font-medium ${suggestion.marcaAcao === "corrigir" ? "text-amber-700" : "text-slate-500"}`}>{actionLabels[suggestion.marcaAcao]}</span>}
-                      </span>
-                      <input value={marca} onChange={(event) => setMarca(event.target.value)} placeholder="A IA sugerirá uma marca" disabled={!suggestion || loading} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50 disabled:text-slate-600" />
-                    </label>
-                    <label className="block space-y-1.5">
-                      <span className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
-                        <span>NCM</span>
-                        {suggestion && <span className={`text-[11px] font-medium ${suggestion.ncmStatus === "corrigir" ? "text-amber-700" : "text-slate-500"}`}>{actionLabels[suggestion.ncmStatus]}</span>}
-                      </span>
-                      <input value={ncm} readOnly placeholder="Sem código validado" className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-900 placeholder:text-slate-400 outline-none" />
-                    </label>
+                {error && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    {error}
+                  </div>
+                )}
 
-                    {suggestion?.alternativasNcm.length ? (
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Opções encontradas na tabela oficial</p>
-                        <div className="max-h-40 space-y-1 overflow-y-auto">
-                          {suggestion.alternativasNcm.map((option) => (
-                            <button key={option.codigo} type="button" onClick={() => setNcm(option.codigo.replace(/\D/g, ""))} className={`flex w-full items-start gap-3 rounded-lg border px-3 py-2 text-left text-xs hover:border-violet-400 hover:bg-violet-50 ${ncm === option.codigo.replace(/\D/g, "") ? "border-violet-400 bg-violet-50" : "border-slate-200"}`}>
-                              <span className="shrink-0 font-mono font-bold text-violet-700">{option.codigo}</span>
-                              <span className="text-slate-600">{option.descricao}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {suggestion && suggestion.alternativasNcm.length === 0 && (
-                      <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-                        Nenhum código compatível foi localizado na tabela oficial. O NCM atual será preservado até você escolher uma opção validada.
+                {quotaWaitMessage && (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className={`rounded-xl border p-4 text-sm ${quotaWaitUntil && quotaWaitUntil > clockNow ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}
+                  >
+                    <p className="font-semibold">
+                      {quotaWaitUntil && quotaWaitUntil > clockNow
+                        ? "Pausa recomendada antes da próxima auditoria"
+                        : "Limite atualizado"}
+                    </p>
+                    <p className="mt-1">{quotaWaitMessage}</p>
+                    {quotaWaitUntil && quotaWaitUntil > clockNow && (
+                      <p className="mt-2 font-mono text-base font-bold tabular-nums">
+                        Tente novamente em{" "}
+                        {formatWait(quotaWaitUntil - clockNow)}
                       </p>
                     )}
+                  </div>
+                )}
 
-                    {suggestion && (
-                      <div className="space-y-2 rounded-lg border border-sky-100 bg-sky-50 p-3 text-xs leading-relaxed text-sky-950">
-                        <p><strong>Pesquisa na internet:</strong> {suggestion.evidenciaWeb}</p>
-                        {suggestion.fontesWeb?.length > 0 && (
-                          <div>
-                            <strong>Fontes consultadas pela Tavily:</strong>
-                            <ul className="mt-1 list-inside list-disc space-y-1">
-                              {suggestion.fontesWeb.map((source) => (
-                                <li key={source.url}>
-                                  <a href={source.url} target="_blank" rel="noreferrer" className="text-sky-800 underline decoration-sky-400 underline-offset-2 hover:text-sky-950">
-                                    {source.title}
-                                  </a>
-                                </li>
-                              ))}
-                            </ul>
+                {product && !done && (
+                  <>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Produto no Prisma
+                      </p>
+                      <p className="mt-1 font-medium text-slate-900 wrap-break-word">
+                        {product.descricao}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500 font-mono">
+                        <span>Código de barras:</span>
+                        {product.codigo_barras ? (
+                          <a
+                            href={`https://www.google.com/search?q=${encodeURIComponent(product.codigo_barras.trim())}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Pesquisar código de barras no Google"
+                            className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                          >
+                            {product.codigo_barras}
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="opacity-70"
+                            >
+                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                              <polyline points="15 3 21 3 21 9" />
+                            </svg>
+                          </a>
+                        ) : (
+                          <span className="text-slate-400 italic">
+                            não informado
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {!suggestion && !loading && (
+                      <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-4">
+                        <p className="text-sm text-violet-900">
+                          Nenhuma chamada foi feita para este item ainda. Gere a
+                          sugestão quando quiser usar sua cota de pesquisa e IA.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void generateSuggestion()}
+                          disabled={loading}
+                          className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-70"
+                        >
+                          {quotaWaitUntil && quotaWaitUntil > clockNow
+                            ? `Aguardar ${formatWait(quotaWaitUntil - clockNow)}`
+                            : "✨ Gerar sugestão para este item"}
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="space-y-4">
+                      <label className="block space-y-1.5">
+                        <span className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
+                          <span>Subcategoria</span>
+                          {suggestion && (
+                            <span className="flex flex-wrap items-center justify-end gap-1.5">
+                              <span
+                                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${!sameLabel(subcategoria, suggestion.subcategoria || "") ? "border-blue-200 bg-blue-50 text-blue-800" : originClasses[suggestion.subcategoriaOrigem]}`}
+                              >
+                                {!sameLabel(
+                                  subcategoria,
+                                  suggestion.subcategoria || "",
+                                )
+                                  ? "Editada por você"
+                                  : originLabels[suggestion.subcategoriaOrigem]}
+                              </span>
+                              <span
+                                className={`text-[11px] font-medium ${suggestion.subcategoriaAcao === "corrigir" ? "text-amber-700" : "text-slate-500"}`}
+                              >
+                                {actionLabels[suggestion.subcategoriaAcao]}
+                              </span>
+                            </span>
+                          )}
+                        </span>
+                        <input
+                          value={subcategoria}
+                          onChange={(event) =>
+                            setSubcategoria(event.target.value)
+                          }
+                          disabled={!suggestion || loading}
+                          placeholder="A IA sugerirá uma subcategoria"
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50 disabled:text-slate-600"
+                        />
+                      </label>
+                      <label className="block space-y-1.5">
+                        <span className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
+                          <span>Categoria (existente ou nova)</span>
+                          {suggestion && (
+                            <span className="flex flex-wrap items-center justify-end gap-1.5">
+                              <span
+                                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${!sameLabel(categoria, suggestion.categoria) ? "border-blue-200 bg-blue-50 text-blue-800" : originClasses[suggestion.categoriaOrigem]}`}
+                              >
+                                {!sameLabel(categoria, suggestion.categoria)
+                                  ? "Editada por você"
+                                  : originLabels[suggestion.categoriaOrigem]}
+                              </span>
+                              <span
+                                className={`text-[11px] font-medium ${suggestion.categoriaAcao === "corrigir" ? "text-amber-700" : "text-slate-500"}`}
+                              >
+                                {actionLabels[suggestion.categoriaAcao]}
+                              </span>
+                            </span>
+                          )}
+                        </span>
+                        <input
+                          value={categoria}
+                          onChange={(event) => setCategoria(event.target.value)}
+                          disabled={!suggestion || loading}
+                          placeholder="A IA sugerirá uma categoria"
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50 disabled:text-slate-600"
+                        />
+                      </label>
+                      <label className="block space-y-1.5">
+                        <span className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
+                          <span>Marca</span>
+                          {suggestion && (
+                            <span
+                              className={`text-[11px] font-medium ${suggestion.marcaAcao === "corrigir" ? "text-amber-700" : "text-slate-500"}`}
+                            >
+                              {actionLabels[suggestion.marcaAcao]}
+                            </span>
+                          )}
+                        </span>
+                        <input
+                          value={marca}
+                          onChange={(event) => setMarca(event.target.value)}
+                          placeholder="A IA sugerirá uma marca"
+                          disabled={!suggestion || loading}
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:bg-slate-50 disabled:text-slate-600"
+                        />
+                      </label>
+                      <label className="block space-y-1.5">
+                        <span className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
+                          <span>NCM</span>
+                          {suggestion && (
+                            <span className="flex flex-wrap items-center justify-end gap-1.5">
+                              {ncm.replace(/\D/g, "") !==
+                                (suggestion.ncmSugerido?.codigo || "").replace(
+                                  /\D/g,
+                                  "",
+                                ) && (
+                                <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">
+                                  {ncm.replace(/\D/g, "") ===
+                                  (product.ncm || "").replace(/\D/g, "")
+                                    ? "Original mantido por você"
+                                    : "Editado por você"}
+                                </span>
+                              )}
+                              <span
+                                className={`text-[11px] font-medium ${
+                                  ncm.replace(/\D/g, "") !==
+                                  (
+                                    suggestion.ncmSugerido?.codigo || ""
+                                  ).replace(/\D/g, "")
+                                    ? "text-slate-500"
+                                    : suggestion.ncmStatus === "corrigir"
+                                      ? "text-amber-700"
+                                      : "text-slate-500"
+                                }`}
+                              >
+                                {ncm.replace(/\D/g, "") !==
+                                (suggestion.ncmSugerido?.codigo || "").replace(
+                                  /\D/g,
+                                  "",
+                                )
+                                  ? ncm.replace(/\D/g, "") ===
+                                    (product.ncm || "").replace(/\D/g, "")
+                                    ? "Confirmado pelo auditor"
+                                    : "Opção personalizada"
+                                  : actionLabels[suggestion.ncmStatus]}
+                              </span>
+                            </span>
+                          )}
+                        </span>
+                        <input
+                          value={ncm}
+                          maxLength={10}
+                          onChange={(event) => {
+                            setNcm(maskNcm(event.target.value));
+                            setError("");
+                          }}
+                          disabled={!suggestion || loading}
+                          placeholder="Ex: 2203.00.00"
+                          className={`w-full rounded-lg border px-3 py-2 font-mono text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring-2 disabled:bg-slate-50 disabled:text-slate-600 ${
+                            isPartialNcm(ncm)
+                              ? "border-rose-400 bg-rose-50/20 focus:border-rose-500 focus:ring-rose-100"
+                              : "border-slate-300 focus:border-violet-500 focus:ring-violet-100"
+                          }`}
+                        />
+                        {isPartialNcm(ncm) && (
+                          <span className="text-[11px] font-medium text-rose-600 block mt-1">
+                            NCM incompleto: digite os 8 dígitos (padrão
+                            XXXX.XX.XX) para liberar o salvamento.
+                          </span>
+                        )}
+                      </label>
+
+                      {suggestion?.alternativasNcm.length ? (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Opções encontradas na tabela oficial
+                          </p>
+                          <div className="max-h-40 space-y-1 overflow-y-auto">
+                            {suggestion.alternativasNcm.map((option) => (
+                              <button
+                                key={option.codigo}
+                                type="button"
+                                onClick={() => {
+                                  setNcm(maskNcm(option.codigo));
+                                  setError("");
+                                }}
+                                className={`flex w-full items-start gap-3 rounded-lg border px-3 py-2 text-left text-xs transition-colors hover:border-violet-400 hover:bg-violet-50 ${
+                                  ncm.replace(/\D/g, "") ===
+                                  option.codigo.replace(/\D/g, "")
+                                    ? "border-violet-500 bg-violet-50 ring-1 ring-violet-500 font-medium"
+                                    : "border-slate-200"
+                                }`}
+                              >
+                                <span className="shrink-0 font-mono font-bold text-violet-700">
+                                  {option.codigo}
+                                </span>
+                                <span className="text-slate-600 wrap-break-word">
+                                  {option.descricao}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {suggestion &&
+                        suggestion.alternativasNcm.length === 0 && (
+                          <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                            Nenhum código compatível foi localizado na tabela
+                            oficial. O NCM atual será preservado até você
+                            escolher uma opção validada.
+                          </p>
+                        )}
+
+                      {suggestion && (
+                        <div className="space-y-2 rounded-lg border border-sky-100 bg-sky-50 p-3 text-xs leading-relaxed text-sky-950 wrap-break-word">
+                          <p className="break-all wrap-anywhere">
+                            <strong>Pesquisa na internet:</strong>{" "}
+                            {suggestion.evidenciaWeb?.startsWith("http://") ||
+                            suggestion.evidenciaWeb?.startsWith("https://") ? (
+                              <a
+                                href={suggestion.evidenciaWeb}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-sky-800 underline decoration-sky-400 underline-offset-2 hover:text-sky-950 break-all"
+                              >
+                                {suggestion.evidenciaWeb}
+                              </a>
+                            ) : (
+                              suggestion.evidenciaWeb
+                            )}
+                          </p>
+                          {suggestion.fontesWeb?.length > 0 && (
+                            <div>
+                              <strong>Fontes consultadas pela Tavily:</strong>
+                              <ul className="mt-1 list-inside list-disc space-y-1">
+                                {suggestion.fontesWeb.map((source) => (
+                                  <li
+                                    key={source.url}
+                                    className="wrap-break-word"
+                                  >
+                                    <a
+                                      href={source.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-sky-800 underline decoration-sky-400 underline-offset-2 hover:text-sky-950 break-all"
+                                    >
+                                      {source.title}
+                                    </a>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          <p className="wrap-anywhere">
+                            <strong>Auditoria:</strong>{" "}
+                            {suggestion.justificativa}
+                          </p>
+                          <p className="text-slate-700">
+                            Revise os campos sinalizados antes de salvar. Para
+                            trocar o NCM, escolha um código da tabela oficial
+                            acima.
+                          </p>
+                        </div>
+                      )}
+                      {suggestion &&
+                        Object.values(suggestion.padroesHistorico || {}).some(
+                          (patterns) => patterns.length > 0,
+                        ) && (
+                          <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs text-violet-950 wrap-break-word">
+                            <p className="font-semibold">
+                              Padrões de revisões anteriores (apoio, não regra)
+                            </p>
+                            {suggestion.padroesHistorico.ncm.length > 0 && (
+                              <p className="wrap-break-word">
+                                NCM:{" "}
+                                {suggestion.padroesHistorico.ncm
+                                  .slice(0, 3)
+                                  .map(
+                                    (item) =>
+                                      `${item.codigo}${item.categoria ? ` em ${item.categoria}` : ""} (${item.ocorrencias} revisão(ões))`,
+                                  )
+                                  .join("; ")}
+                              </p>
+                            )}
+                            {suggestion.padroesHistorico.categorias.length >
+                              0 && (
+                              <p className="wrap-break-word">
+                                Categoria:{" "}
+                                {suggestion.padroesHistorico.categorias
+                                  .slice(0, 3)
+                                  .map(
+                                    (item) =>
+                                      `${item.categoria}${item.subcategoria ? ` / ${item.subcategoria}` : ""} (${item.ocorrencias})`,
+                                  )
+                                  .join("; ")}
+                              </p>
+                            )}
+                            {suggestion.padroesHistorico.subcategorias.length >
+                              0 && (
+                              <p className="wrap-break-word">
+                                Subcategoria:{" "}
+                                {suggestion.padroesHistorico.subcategorias
+                                  .slice(0, 3)
+                                  .map(
+                                    (item) =>
+                                      `${item.categoria ? `${item.categoria} / ` : ""}${item.subcategoria} (${item.ocorrencias})`,
+                                  )
+                                  .join("; ")}
+                              </p>
+                            )}
+                            {suggestion.padroesHistorico.marcas.length > 0 && (
+                              <p className="wrap-break-word">
+                                Marca:{" "}
+                                {suggestion.padroesHistorico.marcas
+                                  .slice(0, 3)
+                                  .map(
+                                    (item) =>
+                                      `${item.marca} (${item.ocorrencias})`,
+                                  )
+                                  .join("; ")}
+                              </p>
+                            )}
+                            <p className="text-violet-800">
+                              Esses padrões vieram de produtos com descrições ou
+                              categorias semelhantes. Confirme cada campo com as
+                              evidências do item atual.
+                            </p>
                           </div>
                         )}
-                        <p><strong>Auditoria:</strong> {suggestion.justificativa}</p>
-                        <p className="text-slate-700">Revise os campos sinalizados antes de salvar. Para trocar o NCM, escolha um código da tabela oficial acima.</p>
-                      </div>
-                    )}
-                    {suggestion && Object.values(suggestion.padroesHistorico || {}).some((patterns) => patterns.length > 0) && (
-                      <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs text-violet-950">
-                        <p className="font-semibold">Padrões de revisões anteriores (apoio, não regra)</p>
-                        {suggestion.padroesHistorico.ncm.length > 0 && (
-                          <p>NCM: {suggestion.padroesHistorico.ncm.slice(0, 3).map((item) => `${item.codigo}${item.categoria ? ` em ${item.categoria}` : ""} (${item.ocorrencias} revisão(ões))`).join("; ")}</p>
-                        )}
-                        {suggestion.padroesHistorico.categorias.length > 0 && (
-                          <p>Categoria: {suggestion.padroesHistorico.categorias.slice(0, 3).map((item) => `${item.categoria}${item.subcategoria ? ` / ${item.subcategoria}` : ""} (${item.ocorrencias})`).join("; ")}</p>
-                        )}
-                        {suggestion.padroesHistorico.subcategorias.length > 0 && (
-                          <p>Subcategoria: {suggestion.padroesHistorico.subcategorias.slice(0, 3).map((item) => `${item.categoria ? `${item.categoria} / ` : ""}${item.subcategoria} (${item.ocorrencias})`).join("; ")}</p>
-                        )}
-                        {suggestion.padroesHistorico.marcas.length > 0 && (
-                          <p>Marca: {suggestion.padroesHistorico.marcas.slice(0, 3).map((item) => `${item.marca} (${item.ocorrencias})`).join("; ")}</p>
-                        )}
-                        <p className="text-violet-800">Esses padrões vieram de produtos com descrições ou categorias semelhantes. Confirme cada campo com as evidências do item atual.</p>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
+                    </div>
+                  </>
+                )}
+              </div>
 
-            <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t bg-white px-4 py-3 sm:px-6 sm:py-4">
-              {!done && product && (
-                <>
-                  <button type="button" onClick={skip} disabled={loading || saving} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Pular sem salvar</button>
-                  <button type="button" onClick={saveAndContinue} disabled={saving || loading || !suggestion} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{saving ? "Salvando…" : currentIndex + 1 === reviewQueue.length ? "Salvar revisão" : "Salvar e próximo item"}</button>
-                </>
+              {error && (
+                <div className="mx-4 sm:mx-6 mb-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 flex items-center justify-between">
+                  <span>{error}</span>
+                  <button
+                    type="button"
+                    onClick={() => setError("")}
+                    className="text-red-500 hover:text-red-700 font-bold ml-2 text-sm leading-none"
+                    aria-label="Dispensar aviso"
+                  >
+                    ✕
+                  </button>
+                </div>
               )}
-              {done && <button type="button" onClick={() => setIsOpen(false)} className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white">Concluir</button>}
-            </footer>
-          </section>
-        </div>,
-        document.body,
-      )}
+
+              <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t bg-white px-4 py-3 sm:px-6 sm:py-4">
+                {!done && product && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={skip}
+                      disabled={loading || saving}
+                      className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Pular sem salvar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveAndContinue}
+                      disabled={
+                        saving || loading || !suggestion || isPartialNcm(ncm)
+                      }
+                      className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={
+                        isPartialNcm(ncm)
+                          ? "Complete os 8 dígitos do NCM para salvar"
+                          : undefined
+                      }
+                    >
+                      {saving
+                        ? "Salvando…"
+                        : currentIndex + 1 === reviewQueue.length
+                          ? "Salvar revisão"
+                          : "Salvar e próximo item"}
+                    </button>
+                  </>
+                )}
+                {done && (
+                  <button
+                    type="button"
+                    onClick={() => setIsOpen(false)}
+                    className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white"
+                  >
+                    Concluir
+                  </button>
+                )}
+              </footer>
+            </section>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

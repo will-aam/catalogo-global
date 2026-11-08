@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect } from "react";
 import { ProdutoGlobal } from "@prisma/client";
 import { useRouter } from "next/navigation";
+import { formatNcm, isIncorrectNcm, maskNcm, isPartialNcm } from "@/lib/ncm";
 
 type NcmResult = { codigo: string; descricao: string; score: number };
 
@@ -50,7 +51,8 @@ function AutocompleteInput({
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
+    const rawVal = e.target.value;
+    const val = type === "ncm" ? maskNcm(rawVal) : rawVal;
     onChange(val);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => fetchSuggestions(val), 300);
@@ -66,6 +68,7 @@ function AutocompleteInput({
         }}
         onBlur={() => setTimeout(() => setIsOpen(false), 200)}
         placeholder={placeholder}
+        maxLength={type === "ncm" ? 10 : undefined}
         className={className}
       />
 
@@ -80,7 +83,7 @@ function AutocompleteInput({
               const displayText = isObj
                 ? `${item.codigo} - ${item.descricao}`
                 : item;
-              const valueToSave = isObj ? item.codigo : item;
+              const valueToSave = isObj ? (type === "ncm" ? maskNcm(item.codigo) : item.codigo) : item;
 
               return (
                 <li
@@ -130,6 +133,36 @@ export default function ProductRow({
   const [saveError, setSaveError] = useState("");
   const [isDeleted, setIsDeleted] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [duplicateConflict, setDuplicateConflict] = useState<{
+    duplicateId: number;
+    duplicateDescricao: string;
+    codigoBarras: string;
+  } | null>(null);
+  const [isResolvingConflict, setIsResolvingConflict] = useState<false | "current" | "other">(false);
+  const [deleteCurrentCountdown, setDeleteCurrentCountdown] = useState(0);
+  const [deleteOtherCountdown, setDeleteOtherCountdown] = useState(0);
+  const deleteCurrentTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const deleteOtherTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const clearConflictTimers = () => {
+    if (deleteCurrentTimerRef.current) {
+      clearInterval(deleteCurrentTimerRef.current);
+      deleteCurrentTimerRef.current = null;
+    }
+    if (deleteOtherTimerRef.current) {
+      clearInterval(deleteOtherTimerRef.current);
+      deleteOtherTimerRef.current = null;
+    }
+    setDeleteCurrentCountdown(0);
+    setDeleteOtherCountdown(0);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (deleteCurrentTimerRef.current) clearInterval(deleteCurrentTimerRef.current);
+      if (deleteOtherTimerRef.current) clearInterval(deleteOtherTimerRef.current);
+    };
+  }, []);
   const router = useRouter();
 
   // ─── NCM FUZZY SEARCH ────────────────────────────────────────
@@ -166,7 +199,7 @@ export default function ProductRow({
 
       setEditData((prev) => ({
         ...prev,
-        ncm: data.ncm ? data.ncm.replace(/\D/g, "") : prev.ncm,
+        ncm: data.ncm ? maskNcm(data.ncm) : prev.ncm,
         descricao: data.nome || prev.descricao,
         marca: data.marca || prev.marca,
         categoria: data.categoria || prev.categoria,
@@ -246,26 +279,39 @@ export default function ProductRow({
   };
 
   const selectNcm = (codigo: string) => {
-    setEditData({ ...editData, ncm: codigo.replace(/\D/g, "") });
+    setEditData({ ...editData, ncm: maskNcm(codigo) });
     setNcmSearchOpen(false);
     setNcmResults([]);
   };
 
   // ─── SALVAR ─────────────────────────────────────────────────
   const handleSave = async () => {
+    if (isPartialNcm(editData.ncm)) {
+      setSaveError("O NCM está incompleto. Digite os 8 dígitos no padrão XXXX.XX.XX para salvar.");
+      return;
+    }
     setIsLoading(true);
     setSaveError("");
+    setDuplicateConflict(null);
     try {
       const res = await fetch(`/api/products/${produto.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editData),
+        body: JSON.stringify({ ...editData, ncm: editData.ncm ? formatNcm(editData.ncm) : null }),
       });
       if (res.ok) {
         setIsEditing(false);
+        setDuplicateConflict(null);
         router.refresh();
       } else {
         const result = await res.json().catch(() => null);
+        if (result?.code === "DUPLICATE_BARCODE") {
+          setDuplicateConflict({
+            duplicateId: result.conflictingProduct?.id || result.duplicateId,
+            duplicateDescricao: result.conflictingProduct?.descricao || result.duplicateDescricao || "Produto cadastrado",
+            codigoBarras: editData.codigo_barras || "",
+          });
+        }
         setSaveError(result?.error || "Não foi possível salvar as alterações. Confira os dados e tente novamente.");
       }
     } catch {
@@ -273,6 +319,109 @@ export default function ProductRow({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // ─── RESOLVER CONFLITO: EXCLUIR ESTE PRODUTO QUE ESTOU EDITANDO (AÇÃO PRINCIPAL) ───
+  const handleTriggerDeleteCurrent = async () => {
+    // 2º clique: contagem ativa -> confirmação concedida no próprio botão sem popups!
+    if (deleteCurrentCountdown > 0) {
+      clearConflictTimers();
+      setIsResolvingConflict("current");
+      try {
+        const res = await fetch(`/api/products/${produto.id}`, {
+          method: "DELETE",
+        });
+        if (res.ok) {
+          setIsEditing(false);
+          setIsDeleted(true);
+          router.refresh();
+        } else {
+          const data = await res.json().catch(() => null);
+          setSaveError(data?.error || "Não foi possível excluir este produto.");
+        }
+      } catch {
+        setSaveError("Erro de conexão ao excluir o produto.");
+      } finally {
+        setIsResolvingConflict(false);
+      }
+      return;
+    }
+
+    // 1º clique: inicia contagem regressiva de 6 segundos no próprio botão
+    if (deleteOtherTimerRef.current) {
+      clearInterval(deleteOtherTimerRef.current);
+      setDeleteOtherCountdown(0);
+    }
+    setDeleteCurrentCountdown(6);
+    deleteCurrentTimerRef.current = setInterval(() => {
+      setDeleteCurrentCountdown((prev) => {
+        if (prev <= 1) {
+          if (deleteCurrentTimerRef.current) clearInterval(deleteCurrentTimerRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  // ─── RESOLVER CONFLITO: EXCLUIR O OUTRO PRODUTO E SALVAR ESTE (AÇÃO SECUNDÁRIA) ───
+  const handleTriggerDeleteOther = async () => {
+    if (!duplicateConflict) return;
+
+    // 2º clique: contagem ativa -> confirmação concedida no próprio botão sem popups!
+    if (deleteOtherCountdown > 0) {
+      const otherId = duplicateConflict.duplicateId;
+      clearConflictTimers();
+      setIsResolvingConflict("other");
+      setSaveError("");
+      try {
+        // 1. Exclui o produto anterior que estava segurando o código
+        const delRes = await fetch(`/api/products/${otherId}`, {
+          method: "DELETE",
+        });
+        if (!delRes.ok) {
+          const delData = await delRes.json().catch(() => null);
+          throw new Error(delData?.error || "Não foi possível excluir o produto conflitante.");
+        }
+
+        // 2. Salva o produto atual agora com o código liberado
+        const putRes = await fetch(`/api/products/${produto.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...editData, ncm: editData.ncm ? formatNcm(editData.ncm) : null }),
+        });
+
+        if (putRes.ok) {
+          setDuplicateConflict(null);
+          setIsEditing(false);
+          router.refresh();
+        } else {
+          const putData = await putRes.json().catch(() => null);
+          setSaveError(putData?.error || "O outro produto foi excluído, mas ocorreu um erro ao salvar este produto.");
+        }
+      } catch (err: unknown) {
+        setSaveError(err instanceof Error ? err.message : "Erro ao resolver conflito.");
+      } finally {
+        setIsResolvingConflict(false);
+      }
+      return;
+    }
+
+    // 1º clique: inicia contagem regressiva de 6 segundos no próprio botão
+    if (deleteCurrentTimerRef.current) {
+      clearInterval(deleteCurrentTimerRef.current);
+      setDeleteCurrentCountdown(0);
+    }
+    setDeleteOtherCountdown(6);
+    deleteOtherTimerRef.current = setInterval(() => {
+      setDeleteOtherCountdown((prev) => {
+        if (prev <= 1) {
+          if (deleteOtherTimerRef.current) clearInterval(deleteOtherTimerRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   };
 
   // ─── EXCLUIR ────────────────────────────────────────────────
@@ -323,7 +472,23 @@ export default function ProductRow({
                 <label className="block min-w-0 space-y-1.5">
                   <span className="text-xs font-semibold text-slate-700">Código de barras</span>
                   <span className="flex gap-2">
-                    <input aria-label="Código de barras" className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={editData.codigo_barras || ""} onChange={(e) => setEditData({ ...editData, codigo_barras: e.target.value })} />
+                    <input
+                      aria-label="Código de barras"
+                      className={`min-w-0 flex-1 rounded-lg border bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none transition ${
+                        saveError && saveError.toLowerCase().includes("código de barras")
+                          ? "border-rose-400 bg-rose-50/20 focus:border-rose-500 focus:ring-2 focus:ring-rose-100"
+                          : "border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      }`}
+                      value={editData.codigo_barras || ""}
+                      onChange={(e) => {
+                        setEditData({ ...editData, codigo_barras: e.target.value });
+                        if (saveError) setSaveError("");
+                        if (duplicateConflict) {
+                          setDuplicateConflict(null);
+                          clearConflictTimers();
+                        }
+                      }}
+                    />
                     <button type="button" onClick={handleGtinSearch} disabled={gtinLoading} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-50" title="Preencher dados usando o código de barras">
                       {gtinLoading ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-indigo-300 border-t-indigo-700" /> : <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 5v14M8 5v14M12 5v14M17 5v14M21 5v14" /></svg>}
                       Buscar
@@ -339,7 +504,7 @@ export default function ProductRow({
                 <label className="block min-w-0 space-y-1.5">
                   <span className="text-xs font-semibold text-slate-700">NCM</span>
                   <span className="flex gap-2">
-                    <AutocompleteInput type="ncm" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={editData.ncm || ""} onChange={(val) => setEditData({ ...editData, ncm: val.replace(/\D/g, "") })} placeholder="Ex.: 33051000" />
+                    <AutocompleteInput type="ncm" className={`w-full rounded-lg border bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none transition focus:ring-2 ${isPartialNcm(editData.ncm) ? "border-rose-400 bg-rose-50/20 focus:border-rose-500 focus:ring-rose-100" : "border-slate-300 focus:border-blue-500 focus:ring-blue-100"}`} value={editData.ncm || ""} onChange={(val) => setEditData({ ...editData, ncm: maskNcm(val) })} placeholder="Ex.: 3305.10.00" />
                     <button id="ncm-search-btn" type="button" onClick={openNcmSearch} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 transition hover:bg-amber-100" title="Buscar NCM pela descrição do produto" aria-label="Buscar NCM pela descrição">
                       <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
                       Buscar
@@ -363,10 +528,157 @@ export default function ProductRow({
                 </label>
               </div>
 
-              {saveError && <p role="alert" className="mx-4 mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 sm:mx-5">{saveError}</p>}
+              {duplicateConflict ? (
+                /* CARD DE RESOLUÇÃO IMEDIATA DE CÓDIGO DUPLICADO */
+                <div className="mx-4 mb-3 rounded-xl border border-amber-300 bg-amber-50/90 p-3.5 sm:p-4 text-xs sm:text-sm text-slate-800 shadow-sm sm:mx-5 animate-in fade-in duration-150">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-lg bg-amber-200/80 p-2 text-amber-800 shrink-0 mt-0.5">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                    </div>
+
+                    <div className="flex-1 space-y-2.5">
+                      <div>
+                        <h4 className="font-bold text-amber-950 text-sm">Código de barras já cadastrado em outro produto</h4>
+                        <p className="text-xs text-amber-900 mt-0.5 leading-relaxed">
+                          O código <span className="font-mono font-bold bg-amber-200/90 px-1.5 py-0.5 rounded text-amber-950">{duplicateConflict.codigoBarras}</span> já está em uso na base. Você pode escolher uma ação rápida abaixo:
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="rounded-lg border border-amber-200 bg-white p-2.5 space-y-0.5">
+                          <span className="font-semibold text-slate-500 uppercase tracking-wide text-[10px] block">Este produto (sendo editado):</span>
+                          <p className="font-bold text-slate-900 truncate" title={produto.descricao}>{produto.descricao}</p>
+                          <p className="text-[11px] text-slate-500">ID #{produto.id}</p>
+                        </div>
+
+                        <div className="rounded-lg border border-amber-300 bg-amber-100/60 p-2.5 space-y-0.5">
+                          <span className="font-semibold text-amber-800 uppercase tracking-wide text-[10px] block">Produto que já tem esse código:</span>
+                          <p className="font-bold text-amber-950 truncate" title={duplicateConflict.duplicateDescricao}>{duplicateConflict.duplicateDescricao}</p>
+                          <p className="text-[11px] text-amber-800 font-medium">ID #{duplicateConflict.duplicateId}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-amber-200/80">
+                        {/* AÇÃO PRINCIPAL E PRIORITÁRIA: Excluir este produto que estou editando */}
+                        <button
+                          type="button"
+                          onClick={handleTriggerDeleteCurrent}
+                          disabled={Boolean(isResolvingConflict) || isLoading}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs transition disabled:opacity-50 ${
+                            deleteCurrentCountdown > 0
+                              ? "bg-rose-700 text-white font-extrabold ring-2 ring-rose-400 ring-offset-1 shadow-md animate-pulse"
+                              : "bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-xs"
+                          }`}
+                          title="Exclui este produto que você está editando"
+                        >
+                          {isResolvingConflict === "current" ? (
+                            <>
+                              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                              <span>Excluindo este produto...</span>
+                            </>
+                          ) : deleteCurrentCountdown > 0 ? (
+                            <>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <line x1="12" y1="8" x2="12" y2="12" />
+                                <line x1="12" y1="16" x2="12.01" y2="16" />
+                              </svg>
+                              <span>Tem certeza? Clique p/ confirmar ({deleteCurrentCountdown}s)</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                              </svg>
+                              <span>Excluir este produto (ID #{produto.id})</span>
+                            </>
+                          )}
+                        </button>
+
+                        {/* AÇÃO SECUNDÁRIA: Excluir o outro produto e salvar este */}
+                        <button
+                          type="button"
+                          onClick={handleTriggerDeleteOther}
+                          disabled={Boolean(isResolvingConflict) || isLoading}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs transition disabled:opacity-50 ${
+                            deleteOtherCountdown > 0
+                              ? "bg-amber-600 text-white font-extrabold ring-2 ring-amber-400 ring-offset-1 shadow-md animate-pulse"
+                              : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 font-semibold shadow-xs"
+                          }`}
+                          title="Exclui o outro produto que já tinha esse código e salva este"
+                        >
+                          {isResolvingConflict === "other" ? (
+                            <>
+                              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                              <span>Excluindo outro e salvando...</span>
+                            </>
+                          ) : deleteOtherCountdown > 0 ? (
+                            <>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <line x1="12" y1="8" x2="12" y2="12" />
+                                <line x1="12" y1="16" x2="12.01" y2="16" />
+                              </svg>
+                              <span>Confirmar exclusão do outro? ({deleteOtherCountdown}s)</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+                                <path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                              </svg>
+                              <span>Excluir o outro produto (ID #{duplicateConflict.duplicateId}) e salvar este</span>
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDuplicateConflict(null);
+                            clearConflictTimers();
+                          }}
+                          className="text-xs text-slate-500 underline hover:text-slate-800 ml-auto"
+                        >
+                          Fechar aviso
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : saveError ? (
+                <div
+                  role="alert"
+                  className="mx-4 mb-3 flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs sm:text-sm text-rose-800 shadow-xs sm:mx-5 animate-in fade-in duration-150"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="shrink-0 text-rose-600 mt-0.5"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  <div className="flex-1 space-y-0.5">
+                    <p className="font-bold text-rose-900">Atenção ao salvar produto</p>
+                    <p className="font-normal text-rose-800 leading-relaxed whitespace-pre-line">{saveError}</p>
+                  </div>
+                </div>
+              ) : null}
               <footer className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50/80 px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
-                <button type="button" onClick={() => { setEditData(produto); setIsEditing(false); }} disabled={isLoading} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50">Cancelar</button>
-                <button type="button" onClick={handleSave} disabled={isLoading || gtinLoading} className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
+                <button type="button" onClick={() => { setEditData(produto); setIsEditing(false); clearConflictTimers(); }} disabled={isLoading} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50">Cancelar</button>
+                <button type="button" onClick={handleSave} disabled={isLoading || gtinLoading || isPartialNcm(editData.ncm)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed" title={isPartialNcm(editData.ncm) ? "Preencha os 8 dígitos do NCM para salvar" : undefined}>
                   {isLoading && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
                   {isLoading ? "Salvando alterações…" : "Salvar alterações"}
                 </button>
@@ -568,7 +880,17 @@ export default function ProductRow({
           title={produto.ncm || undefined}
         >
           {produto.ncm ? (
-            <span className="text-blue-800">{produto.ncm}</span>
+            isIncorrectNcm(produto.ncm) ? (
+              <span
+                className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700 ring-1 ring-inset ring-rose-200"
+                title="NCM incompleto ou incorreto (menos de 8 dígitos)"
+              >
+                <span>⚠️</span>
+                <span>{produto.ncm}</span>
+              </span>
+            ) : (
+              <span className="text-blue-800 font-medium">{formatNcm(produto.ncm)}</span>
+            )
           ) : (
             <span className="inline-flex rounded-md bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">
               Sem NCM

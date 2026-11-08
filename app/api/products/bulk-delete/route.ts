@@ -19,6 +19,7 @@ export async function POST(request: Request) {
         marcaFiltro,
         subcategoriaFiltro,
         semNcm,
+        ncmIncorreto,
         excludeIds,
       } = selectAllFilters;
 
@@ -29,10 +30,19 @@ export async function POST(request: Request) {
       }
 
       if (marcaFiltro) conditions.push({ marca: marcaFiltro });
-      if (subcategoriaFiltro && categoriaFiltro) {
+      if (subcategoriaFiltro) {
         conditions.push({ subcategoria: subcategoriaFiltro });
       }
       if (semNcm) conditions.push({ OR: [{ ncm: null }, { ncm: "" }] });
+
+      if (ncmIncorreto) {
+        const invalidIdsResult = await prisma.$queryRaw<Array<{ id: number }>>`
+          SELECT id FROM "produtos_globais"
+          WHERE "ncm" IS NOT NULL AND "ncm" != '' AND "ncm" !~ '^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}$'
+        `;
+        const invalidIds = invalidIdsResult.map((r) => r.id);
+        conditions.push({ id: { in: invalidIds.length > 0 ? invalidIds : [-1] } });
+      }
 
       if (termoBusca) {
         conditions.push({
@@ -57,21 +67,23 @@ export async function POST(request: Request) {
       whereClause = { id: { in: ids } };
     } else {
       return NextResponse.json(
-        { error: "Nenhum item selecionado" },
+        { error: "Nenhum produto selecionado para exclusão." },
         { status: 400 },
       );
     }
 
-    // Exclui os produtos em massa
-    const resultado = await prisma.produtoGlobal.deleteMany({
+    const deleteResult = await prisma.produtoGlobal.deleteMany({
       where: whereClause,
     });
 
-    return NextResponse.json({ success: true, count: resultado.count });
+    return NextResponse.json({
+      success: true,
+      count: deleteResult.count,
+    });
   } catch (error) {
     console.error("Erro na exclusão em lote:", error);
     return NextResponse.json(
-      { error: "Erro ao excluir itens" },
+      { error: "Erro interno ao excluir produtos." },
       { status: 500 },
     );
   }

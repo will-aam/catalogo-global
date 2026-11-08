@@ -12,6 +12,7 @@ export interface BulkPayload {
     marcaFiltro?: string | null;
     subcategoriaFiltro?: string | null;
     semNcm?: boolean;
+    ncmIncorreto?: boolean;
     excludeIds?: number[];
   };
   categoria?: string;

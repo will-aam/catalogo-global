@@ -1,8 +1,8 @@
 // app/api/products/replace-ncm/route.ts
 
 import { NextResponse } from "next/server";
-
 import { prisma } from "@/lib/prisma";
+import { formatNcm, cleanNcm } from "@/lib/ncm";
 
 export async function POST(request: Request) {
   try {
@@ -15,10 +15,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fazemos a substituição em todos os produtos que contenham o NCM antigo
+    const formattedOld = formatNcm(oldNcm);
+    const cleanedOld = cleanNcm(oldNcm);
+    const formattedNew = formatNcm(newNcm);
+
+    // Fazemos a substituição em todos os produtos que contenham o NCM antigo (com ou sem pontuação)
+    const targets = Array.from(new Set([formattedOld, cleanedOld, oldNcm.trim()].filter(Boolean)));
+
     const resultado = await prisma.produtoGlobal.updateMany({
-      where: { ncm: oldNcm },
-      data: { ncm: newNcm, status_auditoria: "REVISADO" },
+      where: {
+        ncm: {
+          in: targets,
+        },
+      },
+      data: { ncm: formattedNew, status_auditoria: "REVISADO" },
     });
 
     return NextResponse.json({
