@@ -62,7 +62,7 @@ export default function XMLUploadButton() {
     let totalNcmAtualizados = 0;
     let totalMarcaAtualizada = 0;
     let houveErroEmAlgumLote = false;
-    const BATCH_SIZE = 50;
+    const BATCH_SIZE = 10;
 
     try {
       for (let i = 0; i < xmlFiles.length; i += BATCH_SIZE) {
@@ -75,20 +75,32 @@ export default function XMLUploadButton() {
           formData.append("marca", marca.trim());
         }
 
-        const res = await fetch("/api/import-xml", {
-          method: "POST",
-          body: formData,
-        });
+        try {
+          const res = await fetch("/api/import-xml", {
+            method: "POST",
+            body: formData,
+          });
 
-        const data = await res.json();
+          let data: any = null;
+          const contentType = res.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            data = await res.json();
+          } else {
+            const textError = await res.text();
+            console.error(`Erro inesperado (status ${res.status}):`, textError);
+          }
 
-        if (res.ok) {
-          totalNovos += data.criados || 0;
-          totalNcmAtualizados += data.ncmAtualizados || 0;
-          totalMarcaAtualizada += data.marcaAtualizada || 0;
-        } else {
+          if (res.ok && data) {
+            totalNovos += data.criados || 0;
+            totalNcmAtualizados += data.ncmAtualizados || 0;
+            totalMarcaAtualizada += data.marcaAtualizada || 0;
+          } else {
+            houveErroEmAlgumLote = true;
+            console.error(`Erro no lote ${i}:`, data?.error || `Status HTTP ${res.status}`);
+          }
+        } catch (fetchErr) {
           houveErroEmAlgumLote = true;
-          console.error(`Erro no lote ${i}:`, data.error);
+          console.error(`Falha de rede ou timeout no lote ${i}:`, fetchErr);
         }
 
         setProgress({

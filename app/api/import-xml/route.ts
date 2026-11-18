@@ -2,6 +2,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { XMLParser } from "fast-xml-parser";
+import { formatNcm } from "@/lib/ncm";
+
+export const maxDuration = 60; // 60 segundos de timeout na Vercel / serverless
 
 type ProdutoExtraido = {
   descricao: string;
@@ -78,8 +81,9 @@ export async function POST(request: Request) {
         // Só considera o NCM se ele realmente vier preenchido no XML.
         // Se vier vazio/ausente, guardamos como null e NÃO vamos
         // sobrescrever o que já existe no banco lá na frente.
+        // Padronizamos o NCM para o formato oficial (XXXX.XX.XX) caso tenha 7 ou 8 dígitos.
         const ncmRaw = prod.NCM ? String(prod.NCM).trim() : "";
-        const ncm = ncmRaw.length > 0 ? ncmRaw : null;
+        const ncm = ncmRaw.length > 0 ? (formatNcm(ncmRaw) || ncmRaw) : null;
 
         const cEAN = prod.cEAN ? String(prod.cEAN).trim() : "";
         const cEANTrib = prod.cEANTrib ? String(prod.cEANTrib).trim() : "";
@@ -158,13 +162,24 @@ export async function POST(request: Request) {
       }
     }
 
-    // 4. Executa a transação no banco
-    await prisma.$transaction([
-      prisma.produtoGlobal.createMany({ data: novos, skipDuplicates: true }),
-      ...paraAtualizar.map((p) =>
-        prisma.produtoGlobal.update({ where: { id: p.id }, data: p.data }),
-      ),
-    ]);
+    // 4. Executa a inserção dos novos e a atualização dos existentes
+    if (novos.length > 0) {
+      await prisma.produtoGlobal.createMany({
+        data: novos,
+        skipDuplicates: true,
+      });
+    }
+
+    // Processa atualizações em sub-lotes para evitar sobrecarga no banco
+    const UPDATE_CHUNK_SIZE = 50;
+    for (let i = 0; i < paraAtualizar.length; i += UPDATE_CHUNK_SIZE) {
+      const slice = paraAtualizar.slice(i, i + UPDATE_CHUNK_SIZE);
+      await prisma.$transaction(
+        slice.map((p) =>
+          prisma.produtoGlobal.update({ where: { id: p.id }, data: p.data }),
+        ),
+      );
+    }
 
     return NextResponse.json({
       sucesso: true,

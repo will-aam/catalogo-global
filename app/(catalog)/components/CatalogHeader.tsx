@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import UploadButton from "./import/UploadButton";
 import XMLUploadButton from "./import/XMLUploadButton";
-import PDFUploadButton from "./import/PDFUploadButton";
 
 export default function CatalogHeader({ totalItens }: { totalItens: number }) {
   const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
@@ -147,19 +146,6 @@ export default function CatalogHeader({ totalItens }: { totalItens: number }) {
                     Processe vários arquivos e, se quiser, informe uma marca.
                   </p>
                   <XMLUploadButton />
-                </section>
-
-                <section aria-labelledby="import-pdf-title">
-                  <h3
-                    id="import-pdf-title"
-                    className="mb-1 text-xs font-semibold text-slate-700"
-                  >
-                    Catálogo em PDF
-                  </h3>
-                  <p className="mb-2 text-[11px] leading-4 text-slate-500">
-                    Extraia os produtos e revise os dados antes de salvar.
-                  </p>
-                  <PDFUploadButton />
                 </section>
               </div>
             </div>
