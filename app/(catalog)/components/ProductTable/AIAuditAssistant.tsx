@@ -214,12 +214,12 @@ export default function AIAuditAssistant({
       });
 
       let data: any = null;
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        data = await response.json().catch(() => null);
-      } else {
-        const textError = await response.text().catch(() => "");
-        console.error(`Erro inesperado (status ${response.status}):`, textError);
+      let textBody = "";
+      try {
+        textBody = await response.text();
+        data = JSON.parse(textBody);
+      } catch {
+        data = null;
       }
 
       if (!response.ok) {
@@ -236,7 +236,9 @@ export default function AIAuditAssistant({
           setError("");
           return;
         }
-        throw new Error(data?.error || `Falha no servidor ao gerar sugestões (status ${response.status}).`);
+        const serverErrorMsg = data?.error || (textBody ? textBody.slice(0, 200) : "");
+        console.error(`Erro no endpoint /api/suggestions (${response.status}):`, serverErrorMsg);
+        throw new Error(serverErrorMsg || `Falha no servidor ao gerar sugestões (status ${response.status}).`);
       }
 
       if (!data) {

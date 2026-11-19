@@ -712,6 +712,7 @@ export async function POST(request: Request) {
         : tavilyError || groqError
           ? 502
           : 500;
+    const errorDetails = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
       {
         error: tavilyError
@@ -726,7 +727,7 @@ export async function POST(request: Request) {
               : groqError.statusCode === 429
                 ? "O limite gratuito da Groq foi atingido. Aguarde a renovação indicada no painel da conta. Nenhuma alteração foi feita no produto."
                 : "O serviço de IA da Groq não conseguiu processar a auditoria. Tente novamente em instantes."
-            : "Falha ao processar a classificação do produto. Tente novamente em alguns instantes.",
+            : `Falha ao processar a classificação do produto: ${errorDetails}`,
         rateLimit: groqError?.rateLimit || null,
       },
       { status: responseStatus },
