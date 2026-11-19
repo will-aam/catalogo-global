@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { recordGroqUsage } from "@/lib/groq-usage";
 
+export const maxDuration = 60;
+
 const classificationSchema = z.object({
   categoria: z.string(),
   categoriaAcao: z.enum(["preencher", "manter", "corrigir", "sem_sugestao"]),
@@ -611,9 +613,17 @@ export async function POST(request: Request) {
       inputNonCachedTokens: Math.max(0, inputTokens - cachedTokens),
       outputTokens: completion.usage?.completion_tokens || 0,
     });
-    const parsed = classificationSchema.parse(
-      JSON.parse(completion.choices[0]?.message.content || "{}"),
-    );
+    let parsedContent: unknown = {};
+    const rawContent = completion.choices[0]?.message.content?.trim();
+    if (rawContent) {
+      try {
+        parsedContent = JSON.parse(rawContent);
+      } catch (jsonErr) {
+        console.error("Falha ao fazer parse do JSON retornado pelo modelo:", rawContent, jsonErr);
+        throw new Error("O modelo gerou uma resposta JSON malformada.");
+      }
+    }
+    const parsed = classificationSchema.parse(parsedContent);
     const categoriaAcaoValidada =
       !valoresAtuais.categoria && parsed.categoria.trim()
         ? "preencher"

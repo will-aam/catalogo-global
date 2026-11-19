@@ -212,13 +212,22 @@ export default function AIAuditAssistant({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productId: product.id }),
       });
-      const data = await response.json();
+
+      let data: any = null;
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json().catch(() => null);
+      } else {
+        const textError = await response.text().catch(() => "");
+        console.error(`Erro inesperado (status ${response.status}):`, textError);
+      }
+
       if (!response.ok) {
         if (response.status === 429) {
           const waitMs =
-            data.rateLimit?.retryAfterMs ||
-            data.rateLimit?.resetTokensMs ||
-            data.rateLimit?.resetRequestsMs ||
+            data?.rateLimit?.retryAfterMs ||
+            data?.rateLimit?.resetTokensMs ||
+            data?.rateLimit?.resetRequestsMs ||
             60_000;
           startQuotaWait(
             waitMs + 1000,
@@ -227,7 +236,11 @@ export default function AIAuditAssistant({
           setError("");
           return;
         }
-        throw new Error(data.error || "Não foi possível gerar sugestões.");
+        throw new Error(data?.error || `Falha no servidor ao gerar sugestões (status ${response.status}).`);
+      }
+
+      if (!data) {
+        throw new Error("Resposta inválida recebida do servidor.");
       }
       const rateLimit = data.rateLimit as Classification["rateLimit"];
       const requestTokens = Number(data.usage?.totalTokens || 0);
